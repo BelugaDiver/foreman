@@ -43,8 +43,3 @@ def create_app() -> FastAPI:
 
 # Create app instance
 app = create_app()
-
-
-def get_dependency_container() -> DependencyContainer:
-    """FastAPI dependency to get the container instance."""
-    return get_container()
