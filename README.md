@@ -102,6 +102,31 @@ uvicorn foreman.main:app
 
 If no endpoint is configured, the application will run without exporting traces.
 
+### Security Configuration
+
+For production deployments, configure these environment variables:
+
+```bash
+# Use specific allowed origins instead of wildcard
+export CORS_ORIGINS=https://yourdomain.com,https://api.yourdomain.com
+
+# Use secure OTLP connections with TLS
+export OTEL_EXPORTER_OTLP_INSECURE=false
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://your-collector:4317
+```
+
+### Storage Backend
+
+**Important**: The current implementation uses in-memory storage for demonstration purposes. This means:
+- All data is lost when the application restarts
+- Not suitable for production workloads
+- Cannot scale across multiple instances
+
+For production use, implement a proper storage backend such as:
+- PostgreSQL for relational data
+- MongoDB for document storage
+- Redis for caching and fast access
+
 ## Testing
 
 Run tests with pytest:

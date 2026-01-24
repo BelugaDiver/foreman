@@ -25,7 +25,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# In-memory storage for demo purposes (replace with database in production)
+# In-memory storage for demo purposes
+# WARNING: This is not suitable for production use:
+# - Data is lost on application restart
+# - Not safe for concurrent access across multiple workers
+# - Does not scale across multiple instances
+# For production, use a proper database (PostgreSQL, MongoDB, etc.)
 requests_store: Dict[UUID, ImageGenerationRequest] = {}
 
 
@@ -35,7 +40,9 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Foreman service...")
     otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-    setup_telemetry(service_name="foreman", otlp_endpoint=otlp_endpoint)
+    # In production, set OTEL_EXPORTER_OTLP_INSECURE=false for secure connections
+    insecure = os.getenv("OTEL_EXPORTER_OTLP_INSECURE", "true").lower() == "true"
+    setup_telemetry(service_name="foreman", otlp_endpoint=otlp_endpoint, insecure=insecure)
     instrument_app(app)
     logger.info("Foreman service started successfully")
     yield
@@ -52,9 +59,12 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+# WARNING: allow_origins=["*"] is not secure for production
+# Configure CORS_ORIGINS environment variable with specific domains in production
+allowed_origins = os.getenv("CORS_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

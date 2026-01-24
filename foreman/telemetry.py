@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 def setup_telemetry(
     service_name: str = "foreman",
     otlp_endpoint: Optional[str] = None,
+    insecure: bool = True,
 ) -> None:
     """
     Setup OpenTelemetry instrumentation.
@@ -24,6 +25,8 @@ def setup_telemetry(
         service_name: Name of the service for tracing
         otlp_endpoint: OTLP endpoint URL (e.g., "http://localhost:4317")
                       If None, telemetry will be configured but not exported
+        insecure: If True, disables TLS verification for OTLP exporter.
+                 Should be False in production with proper certificates.
     """
     # Create a resource with service name
     resource = Resource.create({"service.name": service_name})
@@ -33,7 +36,7 @@ def setup_telemetry(
 
     # Add OTLP exporter if endpoint is provided
     if otlp_endpoint:
-        otlp_exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
+        otlp_exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=insecure)
         processor = BatchSpanProcessor(otlp_exporter)
         provider.add_span_processor(processor)
         logger.info(f"OpenTelemetry configured with OTLP endpoint: {otlp_endpoint}")
