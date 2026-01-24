@@ -1,7 +1,6 @@
 """Tests for OpenTelemetry instrumentation."""
 
-import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from opentelemetry import trace
 

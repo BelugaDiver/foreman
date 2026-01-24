@@ -6,7 +6,7 @@ Foreman is the event-driven backend for managing image-generation requests for A
 
 - **FastAPI** - Modern, fast web framework for building APIs
 - **OpenTelemetry Integration** - Full distributed tracing and observability
-- **RESTful API** - Complete CRUD operations for image generation requests
+- **Health Check Endpoints** - Simple health monitoring
 - **Async Support** - Asynchronous request handling for better performance
 - **Docker Ready** - Includes Dockerfile and docker-compose for easy deployment
 
@@ -56,39 +56,21 @@ Once the application is running, you can access:
 - `GET /` - Root endpoint with health check
 - `GET /health` - Health check endpoint
 
-### Image Generation Requests
-- `POST /requests` - Create a new image generation request
-- `GET /requests` - List all requests
-- `GET /requests/{request_id}` - Get a specific request
-- `PUT /requests/{request_id}/status` - Update request status
-- `DELETE /requests/{request_id}` - Delete a request
-
 ## Example Usage
 
-### Create a Request
+### Check Health
 
 ```bash
-curl -X POST "http://localhost:8000/requests" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "A beautiful sunset over mountains",
-    "model": "stable-diffusion-v1",
-    "width": 512,
-    "height": 512,
-    "num_images": 1
-  }'
+curl http://localhost:8000/health
 ```
 
-### List All Requests
-
-```bash
-curl "http://localhost:8000/requests"
-```
-
-### Get a Specific Request
-
-```bash
-curl "http://localhost:8000/requests/{request_id}"
+Response:
+```json
+{
+  "status": "healthy",
+  "version": "0.1.0",
+  "service": "foreman"
+}
 ```
 
 ## OpenTelemetry Configuration
@@ -114,18 +96,6 @@ export CORS_ORIGINS=https://yourdomain.com,https://api.yourdomain.com
 export OTEL_EXPORTER_OTLP_INSECURE=false
 export OTEL_EXPORTER_OTLP_ENDPOINT=https://your-collector:4317
 ```
-
-### Storage Backend
-
-**Important**: The current implementation uses in-memory storage for demonstration purposes. This means:
-- All data is lost when the application restarts
-- Not suitable for production workloads
-- Cannot scale across multiple instances
-
-For production use, implement a proper storage backend such as:
-- PostgreSQL for relational data
-- MongoDB for document storage
-- Redis for caching and fast access
 
 ## Testing
 
@@ -163,7 +133,8 @@ foreman/
 │   └── telemetry.py      # OpenTelemetry configuration
 ├── tests/
 │   ├── __init__.py
-│   └── test_main.py      # Application tests
+│   ├── test_main.py      # Application tests
+│   └── test_telemetry.py # Telemetry tests
 ├── Dockerfile            # Docker image configuration
 ├── docker-compose.yml    # Docker compose with Jaeger
 ├── pyproject.toml        # Project dependencies
