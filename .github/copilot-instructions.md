@@ -74,9 +74,8 @@ pytest tests/test_module.py
 ## Dependencies
 
 ### Dependency Management
-- Use `requirements.txt` for production dependencies
-- Use `requirements-dev.txt` for development dependencies
-- Pin dependency versions for reproducibility
+- Use `pyproject.toml` for tracking all dependencies
+- Use `>=` for dependency version specifications to allow compatible updates
 - Regularly update dependencies for security patches
 - Check for known vulnerabilities before adding new dependencies
 
@@ -88,7 +87,8 @@ pytest tests/test_module.py
 ## Error Handling
 
 ### Exception Handling
-- Use specific exception types, not bare `except:`
+- Use specific exception types for known error cases
+- In request handlers, include a base `Exception` catch after specific exceptions
 - Log exceptions with full stack traces
 - Provide meaningful error messages
 - Handle edge cases explicitly
@@ -190,7 +190,7 @@ def process(req):
     result = req.do_stuff()
     return result
 
-# Bad: Using bare except
+# Bad: Using bare except (no exception type specified)
 try:
     dangerous_operation()
 except:
@@ -230,6 +230,6 @@ source venv/bin/activate  # On Unix/macOS
 venv\Scripts\activate  # On Windows
 
 # Install dependencies
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
+pip install -e .
+pip install -e ".[dev]"
 ```
