@@ -1,2 +1,146 @@
-# foreman
+# Foreman
+
 Foreman is the event-driven backend for managing image-generation requests for AI models.
+
+## Features
+
+- **FastAPI** - Modern, fast web framework for building APIs
+- **OpenTelemetry Integration** - Full distributed tracing and observability
+- **Health Check Endpoints** - Simple health monitoring
+- **Async Support** - Asynchronous request handling for better performance
+- **Docker Ready** - Includes Dockerfile and docker-compose for easy deployment
+
+## Installation
+
+### Using pip
+
+```bash
+pip install -e .
+```
+
+### Development Installation
+
+```bash
+pip install -e ".[dev]"
+```
+
+## Running the Application
+
+### Local Development
+
+```bash
+uvicorn foreman.main:app --reload
+```
+
+The API will be available at `http://localhost:8000`
+
+### With Docker Compose (includes Jaeger for tracing)
+
+```bash
+docker-compose up
+```
+
+- API: `http://localhost:8000`
+- Jaeger UI: `http://localhost:16686`
+
+## API Documentation
+
+Once the application is running, you can access:
+
+- **Swagger UI**: `http://localhost:8000/docs`
+- **ReDoc**: `http://localhost:8000/redoc`
+
+## API Endpoints
+
+### Health Check
+- `GET /` - Root endpoint with health check
+- `GET /health` - Health check endpoint
+
+## Example Usage
+
+### Check Health
+
+```bash
+curl http://localhost:8000/health
+```
+
+Response:
+```json
+{
+  "status": "healthy",
+  "version": "0.1.0",
+  "service": "foreman"
+}
+```
+
+## OpenTelemetry Configuration
+
+The application supports OpenTelemetry instrumentation. Configure the OTLP endpoint using environment variables:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+uvicorn foreman.main:app
+```
+
+If no endpoint is configured, the application will run without exporting traces.
+
+### Security Configuration
+
+For production deployments, configure these environment variables:
+
+```bash
+# Use specific allowed origins instead of wildcard
+export CORS_ORIGINS=https://yourdomain.com,https://api.yourdomain.com
+
+# Use secure OTLP connections with TLS
+export OTEL_EXPORTER_OTLP_INSECURE=false
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://your-collector:4317
+```
+
+## Testing
+
+Run tests with pytest:
+
+```bash
+pytest
+```
+
+Run with coverage:
+
+```bash
+pytest --cov=foreman tests/
+```
+
+## Development
+
+### Code Formatting
+
+The project uses Ruff for linting and formatting:
+
+```bash
+ruff check .
+ruff format .
+```
+
+## Project Structure
+
+```
+foreman/
+├── foreman/
+│   ├── __init__.py       # Package initialization
+│   ├── main.py           # FastAPI application
+│   ├── models.py         # Pydantic models
+│   └── telemetry.py      # OpenTelemetry configuration
+├── tests/
+│   ├── __init__.py
+│   ├── test_main.py      # Application tests
+│   └── test_telemetry.py # Telemetry tests
+├── Dockerfile            # Docker image configuration
+├── docker-compose.yml    # Docker compose with Jaeger
+├── pyproject.toml        # Project dependencies
+└── README.md            # This file
+```
+
+## License
+
+MIT
