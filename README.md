@@ -53,6 +53,7 @@ Once the application is running, you can access:
 ## API Endpoints
 
 ### Health Check
+
 - `GET /` - Root endpoint with health check
 - `GET /health` - Health check endpoint
 
@@ -65,6 +66,7 @@ curl http://localhost:8000/health
 ```
 
 Response:
+
 ```json
 {
   "status": "healthy",

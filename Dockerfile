@@ -1,13 +1,14 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install dependencies
+# Copy project files
 COPY pyproject.toml .
-RUN pip install --no-cache-dir -e .
-
-# Copy application code
 COPY foreman ./foreman
+
+# Install build dependencies, then install the package
+RUN pip install --no-cache-dir setuptools && \
+    pip install --no-cache-dir .
 
 # Expose port
 EXPOSE 8000

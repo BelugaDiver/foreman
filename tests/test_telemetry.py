@@ -2,7 +2,12 @@
 
 from unittest.mock import MagicMock
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from foreman.telemetry import instrument_app, setup_telemetry
 
@@ -39,3 +44,31 @@ def test_instrument_app():
 
     # Verify the app was instrumented (the function should complete without error)
     assert True
+
+
+def test_request_tracing_middleware_creates_span():
+    """Ensure inbound API calls are traced."""
+    exporter = InMemorySpanExporter()
+    provider = trace.get_tracer_provider()
+    if not isinstance(provider, TracerProvider):
+        provider = TracerProvider()
+        trace.set_tracer_provider(provider)
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+
+    app = FastAPI()
+
+    @app.get("/ping")
+    async def ping():
+        return {"status": "ok"}
+
+    instrument_app(app)
+    client = TestClient(app)
+
+    response = client.get("/ping")
+    assert response.status_code == 200
+
+    spans = exporter.get_finished_spans()
+    middleware_spans = [
+        span for span in spans if span.attributes.get("foreman.telemetry.middleware")
+    ]
+    assert middleware_spans, "Request tracing middleware should emit spans"
