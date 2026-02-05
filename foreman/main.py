@@ -27,8 +27,12 @@ async def lifespan(app: FastAPI):
     otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
     # In production, set OTEL_EXPORTER_OTLP_INSECURE=false for secure connections
     insecure = os.getenv("OTEL_EXPORTER_OTLP_INSECURE", "true").lower() == "true"
-    setup_telemetry(service_name="foreman", otlp_endpoint=otlp_endpoint, insecure=insecure)
-    instrument_app(app)
+    setup_telemetry(
+        service_name="foreman",
+        service_version=__version__,
+        otlp_endpoint=otlp_endpoint,
+        insecure=insecure,
+    )
     logger.info("Foreman service started successfully")
     yield
     # Shutdown
@@ -54,6 +58,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+instrument_app(app)
 
 
 @app.get("/", response_model=HealthCheck)
