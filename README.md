@@ -34,6 +34,17 @@ uvicorn foreman.main:app --reload
 
 The API will be available at `http://localhost:8000`
 
+Configure the service to talk to your external PostgreSQL instance via environment variables before starting the server:
+
+```bash
+export DATABASE_URL=postgresql://username:password@db-hostname:5432/foreman
+export DB_POOL_MIN_SIZE=1         # Optional, defaults to 1
+export DB_POOL_MAX_SIZE=10        # Optional, defaults to 10
+export DB_COMMAND_TIMEOUT_SECONDS=30  # Optional
+```
+
+If `DATABASE_URL` is omitted, the API will start but database helpers remain unavailable. This is useful for quick local smoke tests, but production deployments **must** provide a valid PostgreSQL DSN.
+
 ### With Docker Compose (includes Jaeger for tracing)
 
 ```bash
@@ -74,6 +85,31 @@ Response:
   "service": "foreman"
 }
 ```
+
+## Database Migrations
+
+Foreman ships with Alembic configured for raw-SQL migrations while the application itself talks directly to PostgreSQL using `asyncpg` (no ORM layer).
+
+1. Install the dev/migrations tooling:
+
+  ```bash
+  pip install -e ".[dev]"
+  ```
+
+2. Ensure `DATABASE_URL` points at the database you want to mutate.
+3. Create a new revision (edit the generated file under `migrations/versions/`):
+
+  ```bash
+  alembic revision -m "create jobs table"
+  ```
+
+4. Apply the latest schema:
+
+  ```bash
+  alembic upgrade head
+  ```
+
+All migration files are plain Python functions; express the desired DDL with `op.execute("... SQL ...")` or `op.create_table(...)` helpers. Since PostgreSQL is expected to run as an external service, ensure your network/security rules allow Alembic to connect from your workstation or CI runner.
 
 ## OpenTelemetry Configuration
 

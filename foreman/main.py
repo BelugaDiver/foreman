@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from foreman import __version__
+from foreman.db import Database, DatabaseSettings
 from foreman.models import HealthCheck
 from foreman.telemetry import instrument_app, setup_telemetry
 
@@ -33,10 +34,16 @@ async def lifespan(app: FastAPI):
         otlp_endpoint=otlp_endpoint,
         insecure=insecure,
     )
+    database = Database(DatabaseSettings.from_env())
+    app.state.database = database
+    await database.startup()
     logger.info("Foreman service started successfully")
-    yield
-    # Shutdown
-    logger.info("Shutting down Foreman service...")
+    try:
+        yield
+    finally:
+        # Shutdown
+        await database.shutdown()
+        logger.info("Shutting down Foreman service...")
 
 
 # Create FastAPI app
