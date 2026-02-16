@@ -54,6 +54,8 @@ docker-compose up
 - API: `http://localhost:8000`
 - Jaeger UI: `http://localhost:16686`
 
+Docker Compose loads sensitive settings from `.env.foreman`, which you should create locally (or in CI) by copying `.env.foreman.example` and filling in the real credentials. The file is ignored by git, so each environment can manage its own secrets without exposing them in `docker-compose.yml`.
+
 ## API Documentation
 
 Once the application is running, you can access:
