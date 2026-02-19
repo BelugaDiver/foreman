@@ -8,6 +8,8 @@ Foreman is the event-driven backend for managing image-generation requests for A
 - **OpenTelemetry Integration** - Full distributed tracing and observability
 - **Health Check Endpoints** - Simple health monitoring
 - **Async Support** - Asynchronous request handling for better performance
+- **PostgreSQL Ready** - Async connection pooling via `asyncpg` without an ORM
+- **Alembic Migrations** - Raw-SQL migrations for controllable schema changes
 - **Docker Ready** - Includes Dockerfile and docker-compose for easy deployment
 
 ## Installation
@@ -56,6 +58,8 @@ docker-compose up
 
 Docker Compose loads sensitive settings from `.env.foreman`, which you should create locally (or in CI) by copying `.env.foreman.example` and filling in the real credentials. The file is ignored by git, so each environment can manage its own secrets without exposing them in `docker-compose.yml`.
 
+When the API container needs to reach a PostgreSQL instance that is running on your host machine, set the hostname portion of `DATABASE_URL` to `host.docker.internal` (Docker Desktop) or configure an extra host entry (`extra_hosts: ["host.docker.internal:host-gateway"]`) on Linux. Ensure PostgreSQL is listening on non-loopback interfaces and that your firewall allows inbound connections.
+
 ## API Documentation
 
 Once the application is running, you can access:
@@ -98,7 +102,7 @@ Foreman ships with Alembic configured for raw-SQL migrations while the applicati
   pip install -e ".[dev]"
   ```
 
-2. Ensure `DATABASE_URL` points at the database you want to mutate.
+2. Ensure `DATABASE_URL` points at the database you want to mutate (e.g., `postgresql://user:pass@host.docker.internal:5432/foreman`).
 3. Create a new revision (edit the generated file under `migrations/versions/`):
 
   ```bash
@@ -170,13 +174,18 @@ foreman/
 │   ├── __init__.py       # Package initialization
 │   ├── main.py           # FastAPI application
 │   ├── models.py         # Pydantic models
+│   ├── db.py             # Async PostgreSQL utilities (pools, helpers)
 │   └── telemetry.py      # OpenTelemetry configuration
 ├── tests/
 │   ├── __init__.py
 │   ├── test_main.py      # Application tests
+│   ├── test_db.py        # Database helper tests
 │   └── test_telemetry.py # Telemetry tests
+├── migrations/           # Alembic environment and revisions
 ├── Dockerfile            # Docker image configuration
 ├── docker-compose.yml    # Docker compose with Jaeger
+├── .env.foreman.example  # Template for secrets used by docker-compose
+├── alembic.ini           # Alembic configuration
 ├── pyproject.toml        # Project dependencies
 └── README.md            # This file
 ```
