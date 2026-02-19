@@ -42,8 +42,11 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         # Shutdown
-        await database.shutdown()
         logger.info("Shutting down Foreman service...")
+        try:
+            await database.shutdown()
+        except Exception:
+            logger.exception("Error while shutting down database")
 
 
 # Create FastAPI app

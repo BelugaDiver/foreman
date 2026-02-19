@@ -3,12 +3,48 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
 
-from foreman.db import Database, DatabaseSettings
+from foreman.db import Database, DatabaseSettings, sql
+
+
+class _DummyAcquire:
+    def __init__(self, connection):
+        self._connection = connection
+
+    async def __aenter__(self):
+        return self._connection
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+class _DummyPool:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def acquire(self):
+        return _DummyAcquire(self.connection)
+
+    async def close(self):
+        return None
+
+
+class _DummyConnection:
+    def __init__(self) -> None:
+        self.execute = AsyncMock(return_value="OK")
+        self.fetch = AsyncMock(return_value=[{"id": 1}])
+        self.fetchrow = AsyncMock(return_value={"id": 1})
+
+
+@pytest.fixture
+def database_with_dummy_pool():
+    database = Database(DatabaseSettings(url="postgresql://user:pass@db/service"))
+    connection = _DummyConnection()
+    database._pool = _DummyPool(connection)
+    return database, connection
 
 
 def test_settings_from_env(monkeypatch):
@@ -75,37 +111,15 @@ async def test_database_startup_with_url(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_connection_context_manager():
+async def test_connection_context_manager(database_with_dummy_pool):
     """The connection context manager should yield a connection from the pool."""
 
-    class _DummyAcquire:
-        def __init__(self, connection: Any) -> None:
-            self._connection = connection
+    database, connection = database_with_dummy_pool
 
-        async def __aenter__(self):
-            return self._connection
+    async with database.connection() as acquired:
+        await acquired.execute("SELECT 1")
 
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-    class _DummyPool:
-        def __init__(self) -> None:
-            self.connection = AsyncMock()
-            self.connection.execute = AsyncMock(return_value="OK")
-
-        def acquire(self):
-            return _DummyAcquire(self.connection)
-
-        async def close(self):
-            return None
-
-    database = Database(DatabaseSettings(url="postgresql://user:pass@db/service"))
-    database._pool = _DummyPool()
-
-    async with database.connection() as connection:
-        await connection.execute("SELECT 1")
-
-    database._pool.connection.execute.assert_awaited_with("SELECT 1")
+    connection.execute.assert_awaited_with("SELECT 1")
 
 
 @pytest.mark.asyncio
@@ -116,3 +130,48 @@ async def test_connection_context_manager_without_pool():
     with pytest.raises(RuntimeError):
         async with database.connection():
             pass
+
+
+def test_sql_helper_builds_statements():
+    """`sql` should capture the text and params separately."""
+    statement = sql("SELECT * FROM users WHERE id = $1", 42)
+
+    assert statement.text == "SELECT * FROM users WHERE id = $1"
+    assert statement.params == (42,)
+
+
+@pytest.mark.asyncio
+async def test_execute_requires_sql_statement(database_with_dummy_pool):
+    """Database.execute should forward structured statements."""
+    database, connection = database_with_dummy_pool
+    connection.execute.return_value = "UPDATE 1"
+    statement = sql("UPDATE users SET email = $1 WHERE id = $2", "a@example.com", 7)
+
+    result = await database.execute(statement)
+
+    assert result == "UPDATE 1"
+    connection.execute.assert_awaited_with(statement.text, *statement.params)
+
+
+@pytest.mark.asyncio
+async def test_fetch_uses_sql_statement(database_with_dummy_pool):
+    database, connection = database_with_dummy_pool
+    connection.fetch.return_value = [{"id": 1, "name": "Ada"}]
+    statement = sql("SELECT * FROM users WHERE id = $1", 1)
+
+    rows = await database.fetch(statement)
+
+    assert rows == [{"id": 1, "name": "Ada"}]
+    connection.fetch.assert_awaited_with(statement.text, *statement.params)
+
+
+@pytest.mark.asyncio
+async def test_fetchrow_uses_sql_statement(database_with_dummy_pool):
+    database, connection = database_with_dummy_pool
+    connection.fetchrow.return_value = {"id": 2, "name": "Grace"}
+    statement = sql("SELECT * FROM users WHERE id = $1", 2)
+
+    row = await database.fetchrow(statement)
+
+    assert row == {"id": 2, "name": "Grace"}
+    connection.fetchrow.assert_awaited_with(statement.text, *statement.params)
