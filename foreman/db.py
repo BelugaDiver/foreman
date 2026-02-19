@@ -6,11 +6,32 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import AsyncIterator, Optional
+from typing import Any, AsyncIterator, Optional
 
 import asyncpg
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class SQLStatement:
+    """Immutable representation of a parameterized SQL statement."""
+
+    text: str
+    params: tuple[Any, ...] = ()
+
+
+def sql(text: str, *params: Any) -> SQLStatement:
+    """Build a parameterized SQL statement for safe execution.
+
+    Always prefer placeholders (e.g., `$1`) in *text* and pass untrusted values
+    through *params* to avoid SQL injection vulnerabilities.
+    """
+
+    if not isinstance(text, str):
+        raise TypeError("SQL text must be a string")
+
+    return SQLStatement(text=text, params=params)
 
 
 @dataclass
@@ -102,29 +123,29 @@ class Database:
         async with self._pool.acquire() as connection:
             yield connection
 
-    async def execute(self, query: str, *args) -> str:
+    async def execute(self, statement: SQLStatement) -> str:
         """Execute a mutation query and return the status string."""
         if not self._pool:
             raise RuntimeError("Database pool is not initialized")
 
         async with self._pool.acquire() as connection:
-            return await connection.execute(query, *args)
+            return await connection.execute(statement.text, *statement.params)
 
-    async def fetch(self, query: str, *args) -> list[asyncpg.Record]:
+    async def fetch(self, statement: SQLStatement) -> list[asyncpg.Record]:
         """Fetch multiple rows for SELECT-style statements."""
         if not self._pool:
             raise RuntimeError("Database pool is not initialized")
 
         async with self._pool.acquire() as connection:
-            return await connection.fetch(query, *args)
+            return await connection.fetch(statement.text, *statement.params)
 
-    async def fetchrow(self, query: str, *args) -> Optional[asyncpg.Record]:
+    async def fetchrow(self, statement: SQLStatement) -> Optional[asyncpg.Record]:
         """Fetch a single row or None."""
         if not self._pool:
             raise RuntimeError("Database pool is not initialized")
 
         async with self._pool.acquire() as connection:
-            return await connection.fetchrow(query, *args)
+            return await connection.fetchrow(statement.text, *statement.params)
 
 
 def _int_from_env(name: str, default: int) -> int:
@@ -139,5 +160,4 @@ def _int_from_env(name: str, default: int) -> int:
         logger.warning("Invalid value '%s' for %s. Falling back to %s.", raw_value, name, default)
         return default
 
-
-__all__ = ["Database", "DatabaseSettings"]
+__all__ = ["Database", "DatabaseSettings", "SQLStatement", "sql"]
