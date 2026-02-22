@@ -9,7 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from foreman import __version__
 from foreman.db import Database, DatabaseSettings
-from foreman.models import HealthCheck
+from foreman.api.v1.endpoints import users
+from foreman.models.health_check import HealthCheck
 from foreman.telemetry import instrument_app, setup_telemetry
 
 # Configure logging
@@ -69,6 +70,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 instrument_app(app)
+
+# Include API routers
+app.include_router(users.router, prefix="/v1/users", tags=["users"])
 
 
 @app.get("/", response_model=HealthCheck)
