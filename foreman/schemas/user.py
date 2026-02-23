@@ -22,6 +22,8 @@ class UserUpdate(BaseModel):
     email: Optional[str] = None
     full_name: Optional[str] = None
 
+    model_config = ConfigDict(extra="forbid")
+
 
 class UserRead(BaseModel):
     """Properties to return to client."""

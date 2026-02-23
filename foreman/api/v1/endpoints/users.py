@@ -1,5 +1,6 @@
 """User management endpoints."""
 from fastapi import APIRouter, Depends, HTTPException
+from asyncpg.exceptions import UniqueViolationError
 
 from foreman import crud
 from foreman.api.deps import get_current_user, get_db
@@ -19,9 +20,9 @@ async def create_user(
     try:
         user = await crud.create_user(db=db, user_in=user_in)
         return user
+    except UniqueViolationError:
+        raise HTTPException(status_code=400, detail="User with this email already exists")
     except Exception as e:
-        if "UniqueViolationError" in type(e).__name__ or "unique constraint" in str(e).lower():
-            raise HTTPException(status_code=400, detail="User with this email already exists")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -45,9 +46,9 @@ async def update_user_me(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         return user
+    except UniqueViolationError:
+        raise HTTPException(status_code=400, detail="User with this email already exists")
     except Exception as e:
-        if "UniqueViolationError" in type(e).__name__ or "unique constraint" in str(e).lower():
-            raise HTTPException(status_code=400, detail="User with this email already exists")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -9,6 +9,7 @@ from foreman.main import app
 import uuid
 from datetime import datetime, timezone
 from fastapi import Header, HTTPException
+from asyncpg.exceptions import UniqueViolationError
 
 from foreman.api.deps import get_current_user, get_db
 from foreman.models.user import User
@@ -49,7 +50,7 @@ def mock_dependencies(monkeypatch):
     async def mock_create_user(db, user_in: UserCreate):
         for u in users_db.values():
             if u.email == user_in.email:
-                raise Exception("unique constraint violation")
+                raise UniqueViolationError("unique constraint violation")
         new_user = User(
             id=uuid.uuid4(),
             email=user_in.email,
