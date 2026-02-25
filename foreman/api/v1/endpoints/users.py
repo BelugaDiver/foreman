@@ -1,11 +1,12 @@
 """User management endpoints."""
-from fastapi import APIRouter, Depends, HTTPException
-from asyncpg.exceptions import UniqueViolationError
 
-from foreman import crud
+from asyncpg.exceptions import UniqueViolationError
+from fastapi import APIRouter, Depends, HTTPException
+
 from foreman.api.deps import get_current_user, get_db
 from foreman.db import Database
 from foreman.models.user import User
+from foreman.repositories import postgres_users_repository as crud
 from foreman.schemas.user import UserCreate, UserRead, UserUpdate
 
 router = APIRouter()
