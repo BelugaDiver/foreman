@@ -8,8 +8,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from foreman import __version__
-from foreman.db import Database, DatabaseSettings
 from foreman.api.v1.endpoints import users
+from foreman.db import Database, DatabaseSettings
 from foreman.models.health_check import HealthCheck
 from foreman.telemetry import instrument_app, setup_telemetry
 
