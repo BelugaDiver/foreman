@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import os
 from logging.config import fileConfig
+from pathlib import Path
 
 from alembic import context
+from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
+
+# Load .env.foreman from the project root (one level above migrations/)
+_env_file = Path(__file__).resolve().parent.parent / ".env.foreman.local"
+load_dotenv(_env_file)
 
 # This is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
