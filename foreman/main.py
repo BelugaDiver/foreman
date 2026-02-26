@@ -10,7 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from foreman import __version__
 from foreman.api.v1.endpoints import users
 from foreman.db import Database, DatabaseSettings
-from foreman.models.health_check import HealthCheck
+from foreman.repositories import postgres_users_repository as crud
+from foreman.schemas.health_check import HealthCheck
 from foreman.telemetry import instrument_app, setup_telemetry
 
 # Configure logging
@@ -38,6 +39,12 @@ async def lifespan(app: FastAPI):
     database = Database(DatabaseSettings.from_env())
     app.state.database = database
     await database.startup()
+    if os.getenv("DEV_MODE", "false").lower() == "true":
+        try:
+            dev_user = await crud.ensure_dev_user(database)
+            logger.info("Dev test user ready: id=%s email=%s", dev_user.id, dev_user.email)
+        except Exception:
+            logger.warning("Could not seed dev test user", exc_info=True)
     logger.info("Foreman service started successfully")
     try:
         yield

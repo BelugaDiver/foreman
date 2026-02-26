@@ -1,4 +1,4 @@
-"""Data models for Foreman API."""
+"""Pydantic schema for the health check API response."""
 
 from pydantic import BaseModel
 
