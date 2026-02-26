@@ -33,8 +33,9 @@ dev = [
 requires = ["setuptools>=80.10.2"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["foreman"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["foreman*"]
 
 [tool.ruff]
 line-length = 100
