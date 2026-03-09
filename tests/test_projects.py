@@ -1,0 +1,342 @@
+"""Tests for project management endpoints."""
+
+import uuid
+from datetime import datetime, timezone
+
+import pytest
+from fastapi import Header, HTTPException
+from fastapi.testclient import TestClient
+
+from foreman.api.deps import get_current_user, get_db
+from foreman.main import app
+from foreman.models.project import Project
+from foreman.models.user import User
+from foreman.schemas.project import ProjectCreate, ProjectUpdate
+
+# ---------------------------------------------------------------------------
+# In-memory stores
+# ---------------------------------------------------------------------------
+users_db: dict[uuid.UUID, User] = {}
+projects_db: dict[uuid.UUID, Project] = {}
+
+# Two fixed users seeded before each test
+USER_A_ID = uuid.uuid4()
+USER_B_ID = uuid.uuid4()
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def mock_dependencies(monkeypatch):
+    """Seed users, mock DB + CRUD, override FastAPI dependencies."""
+
+    now = datetime.now(timezone.utc)
+    users_db[USER_A_ID] = User(
+        id=USER_A_ID,
+        email="usera@example.com",
+        full_name="User A",
+        is_active=True,
+        is_deleted=False,
+        created_at=now,
+        updated_at=None,
+    )
+    users_db[USER_B_ID] = User(
+        id=USER_B_ID,
+        email="userb@example.com",
+        full_name="User B",
+        is_active=True,
+        is_deleted=False,
+        created_at=now,
+        updated_at=None,
+    )
+
+    # ------------------------------------------------------------------
+    # Dependency overrides
+    # ------------------------------------------------------------------
+
+    async def override_get_db():
+        return None  # CRUD is monkeypatched; DB is never touched
+
+    async def override_get_current_user(x_user_id: str | None = Header(None)):
+        if not x_user_id:
+            raise HTTPException(status_code=401, detail="X-User-ID header missing")
+        try:
+            uid = uuid.UUID(x_user_id)
+        except ValueError:
+            raise HTTPException(status_code=401, detail="Invalid X-User-ID")
+        if uid not in users_db:
+            raise HTTPException(status_code=401, detail="User not found")
+        user = users_db[uid]
+        if not user.is_active or user.is_deleted:
+            raise HTTPException(status_code=401, detail="User is inactive or deleted")
+        return user
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
+
+    # ------------------------------------------------------------------
+    # Mock CRUD functions
+    # ------------------------------------------------------------------
+
+    async def mock_list_projects(db, user_id, limit=20, offset=0):
+        results = [p for p in projects_db.values() if p.user_id == user_id]
+        return results[offset : offset + limit]
+
+    async def mock_get_project_by_id(db, project_id, user_id):
+        project = projects_db.get(project_id)
+        if not project or project.user_id != user_id:
+            return None
+        return project
+
+    async def mock_create_project(db, user_id, project_in: ProjectCreate):
+        project = Project(
+            id=uuid.uuid4(),
+            user_id=user_id,
+            name=project_in.name,
+            original_image_url=project_in.original_image_url,
+            room_analysis=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=None,
+        )
+        projects_db[project.id] = project
+        return project
+
+    async def mock_update_project(db, project_id, user_id, project_in: ProjectUpdate):
+        project = projects_db.get(project_id)
+        if not project or project.user_id != user_id:
+            return None
+        for key, value in project_in.model_dump(exclude_unset=True).items():
+            setattr(project, key, value)
+        project.updated_at = datetime.now(timezone.utc)
+        return project
+
+    async def mock_delete_project(db, project_id, user_id):
+        project = projects_db.get(project_id)
+        if not project or project.user_id != user_id:
+            return False
+        del projects_db[project_id]
+        return True
+
+    monkeypatch.setattr("foreman.api.v1.endpoints.projects.crud.list_projects", mock_list_projects)
+    monkeypatch.setattr(
+        "foreman.api.v1.endpoints.projects.crud.get_project_by_id",
+        mock_get_project_by_id,
+    )
+    monkeypatch.setattr(
+        "foreman.api.v1.endpoints.projects.crud.create_project", mock_create_project
+    )
+    monkeypatch.setattr(
+        "foreman.api.v1.endpoints.projects.crud.update_project", mock_update_project
+    )
+    monkeypatch.setattr(
+        "foreman.api.v1.endpoints.projects.crud.delete_project", mock_delete_project
+    )
+
+    yield
+
+    users_db.clear()
+    projects_db.clear()
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client():
+    """TestClient for the FastAPI app."""
+    return TestClient(app)
+
+
+@pytest.fixture
+def headers_a():
+    return {"X-User-ID": str(USER_A_ID)}
+
+
+@pytest.fixture
+def headers_b():
+    return {"X-User-ID": str(USER_B_ID)}
+
+
+# ---------------------------------------------------------------------------
+# Helper
+# ---------------------------------------------------------------------------
+
+
+def create_project(client, headers, name="Test Project", image_url=None):
+    body = {"name": name}
+    if image_url:
+        body["original_image_url"] = image_url
+    resp = client.post("/v1/projects/", headers=headers, json=body)
+    assert resp.status_code == 201
+    return resp.json()
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+
+def test_list_projects_empty(client, headers_a):
+    resp = client.get("/v1/projects/", headers=headers_a)
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_create_project(client, headers_a):
+    resp = client.post(
+        "/v1/projects/",
+        headers=headers_a,
+        json={"name": "Living Room", "original_image_url": "https://example.com/img.jpg"},
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["name"] == "Living Room"
+    assert data["original_image_url"] == "https://example.com/img.jpg"
+    assert data["user_id"] == str(USER_A_ID)
+    assert data["room_analysis"] is None
+    assert "id" in data
+    assert "created_at" in data
+
+
+def test_create_project_name_only(client, headers_a):
+    """original_image_url is optional."""
+    resp = client.post("/v1/projects/", headers=headers_a, json={"name": "Bedroom"})
+    assert resp.status_code == 201
+    assert resp.json()["original_image_url"] is None
+
+
+def test_create_project_missing_name_returns_422(client, headers_a):
+    resp = client.post("/v1/projects/", headers=headers_a, json={})
+    assert resp.status_code == 422
+
+
+def test_list_projects_after_create(client, headers_a):
+    create_project(client, headers_a, name="Project 1")
+    create_project(client, headers_a, name="Project 2")
+    resp = client.get("/v1/projects/", headers=headers_a)
+    assert resp.status_code == 200
+    assert len(resp.json()) == 2
+
+
+def test_list_projects_only_own(client, headers_a, headers_b):
+    """User A's list should not include User B's projects."""
+    create_project(client, headers_a, name="A's Project")
+    create_project(client, headers_b, name="B's Project")
+    resp = client.get("/v1/projects/", headers=headers_a)
+    assert len(resp.json()) == 1
+    assert resp.json()[0]["name"] == "A's Project"
+
+
+def test_get_project(client, headers_a):
+    data = create_project(client, headers_a, name="Kitchen")
+    project_id = data["id"]
+    resp = client.get(f"/v1/projects/{project_id}", headers=headers_a)
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Kitchen"
+
+
+def test_get_project_not_found(client, headers_a):
+    resp = client.get(f"/v1/projects/{uuid.uuid4()}", headers=headers_a)
+    assert resp.status_code == 404
+
+
+def test_update_project(client, headers_a):
+    data = create_project(client, headers_a, name="Den")
+    project_id = data["id"]
+
+    resp = client.patch(
+        f"/v1/projects/{project_id}",
+        headers=headers_a,
+        json={"name": "Den Updated", "room_analysis": {"style": "modern", "colors": ["white"]}},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["name"] == "Den Updated"
+    assert body["room_analysis"] == {"style": "modern", "colors": ["white"]}
+    assert body["updated_at"] is not None
+
+
+def test_update_project_partial(client, headers_a):
+    """Only the provided fields should change."""
+    data = create_project(
+        client, headers_a, name="Office", image_url="https://example.com/before.jpg"
+    )
+    project_id = data["id"]
+
+    resp = client.patch(
+        f"/v1/projects/{project_id}",
+        headers=headers_a,
+        json={"name": "Home Office"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["name"] == "Home Office"
+    # image_url was NOT in the patch — mock preserves it
+    assert body["original_image_url"] == "https://example.com/before.jpg"
+
+
+def test_update_project_not_found(client, headers_a):
+    resp = client.patch(
+        f"/v1/projects/{uuid.uuid4()}",
+        headers=headers_a,
+        json={"name": "Ghost"},
+    )
+    assert resp.status_code == 404
+
+
+def test_update_project_rejects_extra_fields(client, headers_a):
+    data = create_project(client, headers_a, name="Study")
+    resp = client.patch(
+        f"/v1/projects/{data['id']}",
+        headers=headers_a,
+        json={"unknown_field": "value"},
+    )
+    assert resp.status_code == 422
+
+
+def test_delete_project(client, headers_a):
+    data = create_project(client, headers_a, name="Basement")
+    project_id = data["id"]
+
+    del_resp = client.delete(f"/v1/projects/{project_id}", headers=headers_a)
+    assert del_resp.status_code == 204
+
+    get_resp = client.get(f"/v1/projects/{project_id}", headers=headers_a)
+    assert get_resp.status_code == 404
+
+
+def test_delete_project_not_found(client, headers_a):
+    resp = client.delete(f"/v1/projects/{uuid.uuid4()}", headers=headers_a)
+    assert resp.status_code == 404
+
+
+def test_project_ownership_get(client, headers_a, headers_b):
+    """User B cannot read User A's project."""
+    data = create_project(client, headers_a, name="Private Room")
+    resp = client.get(f"/v1/projects/{data['id']}", headers=headers_b)
+    assert resp.status_code == 404
+
+
+def test_project_ownership_patch(client, headers_a, headers_b):
+    """User B cannot update User A's project."""
+    data = create_project(client, headers_a, name="Secret Office")
+    resp = client.patch(f"/v1/projects/{data['id']}", headers=headers_b, json={"name": "Hijacked"})
+    assert resp.status_code == 404
+
+
+def test_project_ownership_delete(client, headers_a, headers_b):
+    """User B cannot delete User A's project."""
+    data = create_project(client, headers_a, name="Vault")
+    resp = client.delete(f"/v1/projects/{data['id']}", headers=headers_b)
+    assert resp.status_code == 404
+
+
+def test_unauthenticated_list(client):
+    resp = client.get("/v1/projects/")
+    assert resp.status_code == 401
+
+
+def test_unauthenticated_create(client):
+    resp = client.post("/v1/projects/", json={"name": "Sneaky"})
+    assert resp.status_code == 401
