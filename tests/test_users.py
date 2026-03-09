@@ -1,28 +1,40 @@
 """Tests for user management endpoints."""
 
-import pytest
-from fastapi.testclient import TestClient
-
-from foreman.main import app
-
-
+# ---------------------------------------------------------------------------
+# Stdlib
+# ---------------------------------------------------------------------------
 import uuid
 from datetime import datetime, timezone
-from fastapi import Header, HTTPException
-from asyncpg.exceptions import UniqueViolationError
 
+# ---------------------------------------------------------------------------
+# Third-party
+# ---------------------------------------------------------------------------
+import pytest
+from asyncpg.exceptions import UniqueViolationError
+from fastapi import Header, HTTPException
+from fastapi.testclient import TestClient
+
+# ---------------------------------------------------------------------------
+# Local
+# ---------------------------------------------------------------------------
 from foreman.api.deps import get_current_user, get_db
+from foreman.main import app
 from foreman.models.user import User
 from foreman.schemas.user import UserCreate, UserUpdate
 
-# In-memory DB for tests
+# In-memory store for tests
 users_db = {}
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
 def mock_dependencies(monkeypatch):
-    """Mock database and CRUD operations for endpoints tests."""
-    
+    """Mock database and CRUD operations for endpoint tests."""
+
     async def override_get_db():
         return None  # Replaced by mocked CRUD functions
 
@@ -33,20 +45,20 @@ def mock_dependencies(monkeypatch):
             uid = uuid.UUID(x_user_id)
         except ValueError:
             raise HTTPException(status_code=401, detail="Invalid X-User-ID")
-            
+
         if uid not in users_db:
             raise HTTPException(status_code=401, detail="User not found")
-            
+
         user = users_db[uid]
         if not user.is_active or user.is_deleted:
             raise HTTPException(status_code=401, detail="User is inactive or deleted")
         return user
 
-    # Override dependencies
+    # Override FastAPI dependencies
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
-    
-    # Mock CRUD
+
+    # Mock CRUD functions
     async def mock_create_user(db, user_in: UserCreate):
         for u in users_db.values():
             if u.email == user_in.email:
@@ -83,10 +95,12 @@ def mock_dependencies(monkeypatch):
 
     monkeypatch.setattr("foreman.api.v1.endpoints.users.crud.create_user", mock_create_user)
     monkeypatch.setattr("foreman.api.v1.endpoints.users.crud.update_user", mock_update_user)
-    monkeypatch.setattr("foreman.api.v1.endpoints.users.crud.soft_delete_user", mock_soft_delete_user)
-    
+    monkeypatch.setattr(
+        "foreman.api.v1.endpoints.users.crud.soft_delete_user", mock_soft_delete_user
+    )
+
     yield
-    
+
     users_db.clear()
     app.dependency_overrides.clear()
 
@@ -97,69 +111,91 @@ def client():
     return TestClient(app)
 
 
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+
 def test_create_user(client):
-    response = client.post("/v1/users/", json={
-        "email": "test_create@example.com",
-        "full_name": "Test Create User"
-    })
+    """POST /v1/users/ with valid data should return 201 and the new user."""
+    # Arrange
+    payload = {"email": "test_create@example.com", "full_name": "Test Create User"}
+
+    # Act
+    response = client.post("/v1/users/", json=payload)
+
+    # Assert
     assert response.status_code == 201
     data = response.json()
     assert data["email"] == "test_create@example.com"
     assert "id" in data
-    
-    # Try duplicate email
-    response_dup = client.post("/v1/users/", json={
-        "email": "test_create@example.com",
-        "full_name": "Another User"
-    })
-    assert response_dup.status_code == 400
+
+
+def test_create_user_duplicate_email_returns_400(client):
+    """POST /v1/users/ with a duplicate e-mail should return 400."""
+    # Arrange
+    payload = {"email": "dupe@example.com", "full_name": "First"}
+    client.post("/v1/users/", json=payload)
+
+    # Act
+    response = client.post("/v1/users/", json={"email": "dupe@example.com", "full_name": "Second"})
+
+    # Assert
+    assert response.status_code == 400
 
 
 def test_get_user_me(client):
-    # First create a user
-    resp_create = client.post("/v1/users/", json={
-        "email": "test_me@example.com",
-        "full_name": "Me User"
-    })
-    assert resp_create.status_code == 201
-    user_id = resp_create.json()["id"]
+    """GET /v1/users/me should return the authenticated user's profile."""
+    # Arrange
+    create_resp = client.post(
+        "/v1/users/", json={"email": "test_me@example.com", "full_name": "Me User"}
+    )
+    assert create_resp.status_code == 201
+    user_id = create_resp.json()["id"]
 
-    # Now get it using the X-User-ID header
-    resp_get = client.get("/v1/users/me", headers={"X-User-ID": user_id})
-    assert resp_get.status_code == 200
-    assert resp_get.json()["email"] == "test_me@example.com"
+    # Act
+    response = client.get("/v1/users/me", headers={"X-User-ID": user_id})
+
+    # Assert
+    assert response.status_code == 200
+    assert response.json()["email"] == "test_me@example.com"
 
 
 def test_update_user_me(client):
-    # Create user
-    resp_create = client.post("/v1/users/", json={
-        "email": "test_update@example.com",
-        "full_name": "Update User"
-    })
-    assert resp_create.status_code == 201
-    user_id = resp_create.json()["id"]
+    """PATCH /v1/users/me should update the authenticated user's profile."""
+    # Arrange
+    create_resp = client.post(
+        "/v1/users/", json={"email": "test_update@example.com", "full_name": "Update User"}
+    )
+    assert create_resp.status_code == 201
+    user_id = create_resp.json()["id"]
 
-    # Update
-    resp_patch = client.patch("/v1/users/me", headers={"X-User-ID": user_id}, json={
-        "full_name": "Updated Name"
-    })
-    assert resp_patch.status_code == 200
-    assert resp_patch.json()["full_name"] == "Updated Name"
+    # Act
+    response = client.patch(
+        "/v1/users/me",
+        headers={"X-User-ID": user_id},
+        json={"full_name": "Updated Name"},
+    )
+
+    # Assert
+    assert response.status_code == 200
+    assert response.json()["full_name"] == "Updated Name"
 
 
 def test_delete_user_me(client):
-    # Create user
-    resp_create = client.post("/v1/users/", json={
-        "email": "test_delete@example.com",
-        "full_name": "Delete User"
-    })
-    assert resp_create.status_code == 201
-    user_id = resp_create.json()["id"]
+    """DELETE /v1/users/me should soft-delete the user; subsequent GET returns 401."""
+    # Arrange
+    create_resp = client.post(
+        "/v1/users/", json={"email": "test_delete@example.com", "full_name": "Delete User"}
+    )
+    assert create_resp.status_code == 201
+    user_id = create_resp.json()["id"]
 
-    # Delete
-    resp_delete = client.delete("/v1/users/me", headers={"X-User-ID": user_id})
-    assert resp_delete.status_code == 204
+    # Act
+    delete_resp = client.delete("/v1/users/me", headers={"X-User-ID": user_id})
 
-    # Try getting it again, should be 401 because it's soft-deleted
-    resp_get = client.get("/v1/users/me", headers={"X-User-ID": user_id})
-    assert resp_get.status_code == 401
+    # Assert
+    assert delete_resp.status_code == 204
+    # Soft-deleted user is rejected by the auth dependency
+    get_resp = client.get("/v1/users/me", headers={"X-User-ID": user_id})
+    assert get_resp.status_code == 401

@@ -1,9 +1,20 @@
 """Tests for the Foreman FastAPI application."""
 
+# ---------------------------------------------------------------------------
+# Third-party
+# ---------------------------------------------------------------------------
 import pytest
 from fastapi.testclient import TestClient
 
+# ---------------------------------------------------------------------------
+# Local
+# ---------------------------------------------------------------------------
 from foreman.main import app
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -12,9 +23,19 @@ def client():
     return TestClient(app)
 
 
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+
 def test_root_endpoint(client):
-    """Test the root endpoint returns health check."""
+    """GET / should return a healthy status with service metadata."""
+    # Arrange — no setup required
+
+    # Act
     response = client.get("/")
+
+    # Assert
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
@@ -23,8 +44,13 @@ def test_root_endpoint(client):
 
 
 def test_health_check(client):
-    """Test the health check endpoint."""
+    """GET /health should return a healthy status."""
+    # Arrange — no setup required
+
+    # Act
     response = client.get("/health")
+
+    # Assert
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"

@@ -1,12 +1,21 @@
 """Tests for project management endpoints."""
 
+# ---------------------------------------------------------------------------
+# Stdlib
+# ---------------------------------------------------------------------------
 import uuid
 from datetime import datetime, timezone
 
+# ---------------------------------------------------------------------------
+# Third-party
+# ---------------------------------------------------------------------------
 import pytest
 from fastapi import Header, HTTPException
 from fastapi.testclient import TestClient
 
+# ---------------------------------------------------------------------------
+# Local
+# ---------------------------------------------------------------------------
 from foreman.api.deps import get_current_user, get_db
 from foreman.main import app
 from foreman.models.project import Project
@@ -150,11 +159,13 @@ def client():
 
 @pytest.fixture
 def headers_a():
+    """Auth headers for User A."""
     return {"X-User-ID": str(USER_A_ID)}
 
 
 @pytest.fixture
 def headers_b():
+    """Auth headers for User B."""
     return {"X-User-ID": str(USER_B_ID)}
 
 
@@ -164,6 +175,7 @@ def headers_b():
 
 
 def create_project(client, headers, name="Test Project", image_url=None):
+    """Create a project via the API and assert success."""
     body = {"name": name}
     if image_url:
         body["original_image_url"] = image_url
@@ -178,17 +190,26 @@ def create_project(client, headers, name="Test Project", image_url=None):
 
 
 def test_list_projects_empty(client, headers_a):
+    """GET /v1/projects/ with no projects should return an empty list."""
+    # Arrange — store is empty by default
+
+    # Act
     resp = client.get("/v1/projects/", headers=headers_a)
+
+    # Assert
     assert resp.status_code == 200
     assert resp.json() == []
 
 
 def test_create_project(client, headers_a):
-    resp = client.post(
-        "/v1/projects/",
-        headers=headers_a,
-        json={"name": "Living Room", "original_image_url": "https://example.com/img.jpg"},
-    )
+    """POST /v1/projects/ with valid data should return 201 and the new project."""
+    # Arrange
+    payload = {"name": "Living Room", "original_image_url": "https://example.com/img.jpg"}
+
+    # Act
+    resp = client.post("/v1/projects/", headers=headers_a, json=payload)
+
+    # Assert
     assert resp.status_code == 201
     data = resp.json()
     assert data["name"] == "Living Room"
@@ -200,56 +221,97 @@ def test_create_project(client, headers_a):
 
 
 def test_create_project_name_only(client, headers_a):
-    """original_image_url is optional."""
-    resp = client.post("/v1/projects/", headers=headers_a, json={"name": "Bedroom"})
+    """original_image_url is optional; omitting it should return null in the response."""
+    # Arrange
+    payload = {"name": "Bedroom"}
+
+    # Act
+    resp = client.post("/v1/projects/", headers=headers_a, json=payload)
+
+    # Assert
     assert resp.status_code == 201
     assert resp.json()["original_image_url"] is None
 
 
 def test_create_project_missing_name_returns_422(client, headers_a):
-    resp = client.post("/v1/projects/", headers=headers_a, json={})
+    """POST /v1/projects/ without a required name field should return 422."""
+    # Arrange
+    payload = {}
+
+    # Act
+    resp = client.post("/v1/projects/", headers=headers_a, json=payload)
+
+    # Assert
     assert resp.status_code == 422
 
 
 def test_list_projects_after_create(client, headers_a):
+    """GET /v1/projects/ should reflect all projects created by the user."""
+    # Arrange
     create_project(client, headers_a, name="Project 1")
     create_project(client, headers_a, name="Project 2")
+
+    # Act
     resp = client.get("/v1/projects/", headers=headers_a)
+
+    # Assert
     assert resp.status_code == 200
     assert len(resp.json()) == 2
 
 
 def test_list_projects_only_own(client, headers_a, headers_b):
     """User A's list should not include User B's projects."""
+    # Arrange
     create_project(client, headers_a, name="A's Project")
     create_project(client, headers_b, name="B's Project")
+
+    # Act
     resp = client.get("/v1/projects/", headers=headers_a)
+
+    # Assert
     assert len(resp.json()) == 1
     assert resp.json()[0]["name"] == "A's Project"
 
 
 def test_get_project(client, headers_a):
+    """GET /v1/projects/{id} should return the matching project."""
+    # Arrange
     data = create_project(client, headers_a, name="Kitchen")
     project_id = data["id"]
+
+    # Act
     resp = client.get(f"/v1/projects/{project_id}", headers=headers_a)
+
+    # Assert
     assert resp.status_code == 200
     assert resp.json()["name"] == "Kitchen"
 
 
 def test_get_project_not_found(client, headers_a):
+    """GET /v1/projects/{id} with an unknown ID should return 404."""
+    # Arrange — no project created
+
+    # Act
     resp = client.get(f"/v1/projects/{uuid.uuid4()}", headers=headers_a)
+
+    # Assert
     assert resp.status_code == 404
 
 
 def test_update_project(client, headers_a):
+    """PATCH /v1/projects/{id} should update the provided fields and set updated_at."""
+    # Arrange
     data = create_project(client, headers_a, name="Den")
     project_id = data["id"]
 
+    # Act
     resp = client.patch(
         f"/v1/projects/{project_id}",
         headers=headers_a,
         json={"name": "Den Updated", "room_analysis": {"style": "modern", "colors": ["white"]}},
     )
+
+    # Assert
     assert resp.status_code == 200
     body = resp.json()
     assert body["name"] == "Den Updated"
@@ -258,85 +320,137 @@ def test_update_project(client, headers_a):
 
 
 def test_update_project_partial(client, headers_a):
-    """Only the provided fields should change."""
+    """Only the provided fields should change; untouched fields should be preserved."""
+    # Arrange
     data = create_project(
         client, headers_a, name="Office", image_url="https://example.com/before.jpg"
     )
     project_id = data["id"]
 
+    # Act
     resp = client.patch(
         f"/v1/projects/{project_id}",
         headers=headers_a,
         json={"name": "Home Office"},
     )
+
+    # Assert
     assert resp.status_code == 200
     body = resp.json()
     assert body["name"] == "Home Office"
-    # image_url was NOT in the patch — mock preserves it
     assert body["original_image_url"] == "https://example.com/before.jpg"
 
 
 def test_update_project_not_found(client, headers_a):
+    """PATCH /v1/projects/{id} with an unknown ID should return 404."""
+    # Arrange — no project created
+
+    # Act
     resp = client.patch(
         f"/v1/projects/{uuid.uuid4()}",
         headers=headers_a,
         json={"name": "Ghost"},
     )
+
+    # Assert
     assert resp.status_code == 404
 
 
 def test_update_project_rejects_extra_fields(client, headers_a):
+    """PATCH /v1/projects/{id} with unknown fields should return 422."""
+    # Arrange
     data = create_project(client, headers_a, name="Study")
+
+    # Act
     resp = client.patch(
         f"/v1/projects/{data['id']}",
         headers=headers_a,
         json={"unknown_field": "value"},
     )
+
+    # Assert
     assert resp.status_code == 422
 
 
 def test_delete_project(client, headers_a):
+    """DELETE /v1/projects/{id} should return 204; subsequent GET should return 404."""
+    # Arrange
     data = create_project(client, headers_a, name="Basement")
     project_id = data["id"]
 
+    # Act
     del_resp = client.delete(f"/v1/projects/{project_id}", headers=headers_a)
-    assert del_resp.status_code == 204
 
+    # Assert
+    assert del_resp.status_code == 204
     get_resp = client.get(f"/v1/projects/{project_id}", headers=headers_a)
     assert get_resp.status_code == 404
 
 
 def test_delete_project_not_found(client, headers_a):
+    """DELETE /v1/projects/{id} with an unknown ID should return 404."""
+    # Arrange — no project created
+
+    # Act
     resp = client.delete(f"/v1/projects/{uuid.uuid4()}", headers=headers_a)
+
+    # Assert
     assert resp.status_code == 404
 
 
 def test_project_ownership_get(client, headers_a, headers_b):
     """User B cannot read User A's project."""
+    # Arrange
     data = create_project(client, headers_a, name="Private Room")
+
+    # Act
     resp = client.get(f"/v1/projects/{data['id']}", headers=headers_b)
+
+    # Assert
     assert resp.status_code == 404
 
 
 def test_project_ownership_patch(client, headers_a, headers_b):
     """User B cannot update User A's project."""
+    # Arrange
     data = create_project(client, headers_a, name="Secret Office")
+
+    # Act
     resp = client.patch(f"/v1/projects/{data['id']}", headers=headers_b, json={"name": "Hijacked"})
+
+    # Assert
     assert resp.status_code == 404
 
 
 def test_project_ownership_delete(client, headers_a, headers_b):
     """User B cannot delete User A's project."""
+    # Arrange
     data = create_project(client, headers_a, name="Vault")
+
+    # Act
     resp = client.delete(f"/v1/projects/{data['id']}", headers=headers_b)
+
+    # Assert
     assert resp.status_code == 404
 
 
 def test_unauthenticated_list(client):
+    """GET /v1/projects/ without auth header should return 401."""
+    # Arrange — no headers provided
+
+    # Act
     resp = client.get("/v1/projects/")
+
+    # Assert
     assert resp.status_code == 401
 
 
 def test_unauthenticated_create(client):
+    """POST /v1/projects/ without auth header should return 401."""
+    # Arrange — no headers provided
+
+    # Act
     resp = client.post("/v1/projects/", json={"name": "Sneaky"})
+
+    # Assert
     assert resp.status_code == 401
