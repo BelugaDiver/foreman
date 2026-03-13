@@ -3,7 +3,6 @@
 # ---------------------------------------------------------------------------
 # Third-party
 # ---------------------------------------------------------------------------
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from opentelemetry import trace
@@ -15,7 +14,6 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 # Local
 # ---------------------------------------------------------------------------
 from foreman.telemetry import instrument_app, setup_telemetry
-
 
 # ---------------------------------------------------------------------------
 # Tests
