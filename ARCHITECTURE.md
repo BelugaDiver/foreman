@@ -100,7 +100,7 @@ Three Pydantic schemas per resource:
 - One `APIRouter()` per resource file.
 - Always inject both `get_current_user` and `get_db` via `Depends`.
 - Return `404` when a record is not found (or not owned by the caller — do **not** distinguish between "not found" and "not yours" to avoid leaking existence).
-- Wrap mutations in `try/except Exception` and raise `HTTPException(500, str(e))` as a last resort.
+- Wrap mutations in `try/except Exception` and, as a last resort, log the exception with a full stack trace and raise `HTTPException(status_code=500, detail="Internal server error")` (never expose raw exception messages like `str(e)` to clients).
 - Register the router in `main.py` with prefix `/v1/<resource>` and a matching tag.
 
 ---
