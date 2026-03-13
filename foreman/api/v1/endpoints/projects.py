@@ -1,5 +1,6 @@
 """Project management endpoints."""
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,6 +12,7 @@ from foreman.repositories import postgres_projects_repository as crud
 from foreman.schemas.project import ProjectCreate, ProjectRead, ProjectUpdate
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/", response_model=list[ProjectRead])
@@ -33,8 +35,9 @@ async def create_project(
     """Create a new design project."""
     try:
         return await crud.create_project(db=db, user_id=current_user.id, project_in=project_in)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Error creating project")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/{project_id}", response_model=ProjectRead)
@@ -70,8 +73,9 @@ async def update_project(
         return project
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Error updating project")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/{project_id}", status_code=204)
@@ -81,6 +85,12 @@ async def delete_project(
     db: Database = Depends(get_db),
 ):
     """Delete a project and all its generations."""
-    success = await crud.delete_project(db=db, project_id=project_id, user_id=current_user.id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Project not found")
+    try:
+        success = await crud.delete_project(db=db, project_id=project_id, user_id=current_user.id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Project not found")
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error deleting project")
+        raise HTTPException(status_code=500, detail="Internal server error")

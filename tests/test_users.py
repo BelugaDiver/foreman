@@ -199,3 +199,66 @@ def test_delete_user_me(client):
     # Soft-deleted user is rejected by the auth dependency
     get_resp = client.get("/v1/users/me", headers={"X-User-ID": user_id})
     assert get_resp.status_code == 401
+
+
+def test_create_user_internal_error_returns_500(client, monkeypatch):
+    """POST /v1/users/ returns 500 if crud raises an unexpected exception."""
+
+    # Arrange
+    async def mock_err(*args, **kwargs):
+        raise Exception("DB failure")
+
+    monkeypatch.setattr("foreman.api.v1.endpoints.users.crud.create_user", mock_err)
+
+    # Act
+    response = client.post("/v1/users/", json={"email": "500@example.com", "full_name": "500"})
+
+    # Assert
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Internal server error"}
+
+
+def test_update_user_internal_error_returns_500(client, monkeypatch):
+    """PATCH /v1/users/me returns 500 if crud raises an unexpected exception."""
+    # Arrange
+    create_resp = client.post(
+        "/v1/users/", json={"email": "patch500@example.com", "full_name": "Ready"}
+    )
+    user_id = create_resp.json()["id"]
+
+    async def mock_err(*args, **kwargs):
+        raise Exception("Disk full")
+
+    monkeypatch.setattr("foreman.api.v1.endpoints.users.crud.update_user", mock_err)
+
+    # Act
+    response = client.patch(
+        "/v1/users/me",
+        headers={"X-User-ID": user_id},
+        json={"full_name": "Boom"},
+    )
+
+    # Assert
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Internal server error"}
+
+
+def test_delete_user_internal_error_returns_500(client, monkeypatch):
+    """DELETE /v1/users/me returns 500 if crud raises an unexpected exception."""
+    # Arrange
+    create_resp = client.post(
+        "/v1/users/", json={"email": "del500@example.com", "full_name": "Ready"}
+    )
+    user_id = create_resp.json()["id"]
+
+    async def mock_err(*args, **kwargs):
+        raise Exception("Network issue")
+
+    monkeypatch.setattr("foreman.api.v1.endpoints.users.crud.soft_delete_user", mock_err)
+
+    # Act
+    response = client.delete("/v1/users/me", headers={"X-User-ID": user_id})
+
+    # Assert
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Internal server error"}

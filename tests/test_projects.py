@@ -454,3 +454,56 @@ def test_unauthenticated_create(client):
 
     # Assert
     assert resp.status_code == 401
+
+
+def test_create_project_internal_error_returns_500(client, headers_a, monkeypatch):
+    """POST /v1/projects/ returns 500 if crud raises an unexpected exception."""
+
+    # Arrange
+    async def mock_err(*args, **kwargs):
+        raise Exception("DB is down!")
+
+    monkeypatch.setattr("foreman.api.v1.endpoints.projects.crud.create_project", mock_err)
+
+    # Act
+    resp = client.post("/v1/projects/", headers=headers_a, json={"name": "Boom"})
+
+    # Assert
+    assert resp.status_code == 500
+    assert resp.json() == {"detail": "Internal server error"}
+
+
+def test_update_project_internal_error_returns_500(client, headers_a, monkeypatch):
+    """PATCH /v1/projects/{id} returns 500 if crud raises an unexpected exception."""
+    # Arrange
+    data = create_project(client, headers_a, name="Before explosion")
+
+    async def mock_err(*args, **kwargs):
+        raise Exception("Network timeout")
+
+    monkeypatch.setattr("foreman.api.v1.endpoints.projects.crud.update_project", mock_err)
+
+    # Act
+    resp = client.patch(f"/v1/projects/{data['id']}", headers=headers_a, json={"name": "Will fail"})
+
+    # Assert
+    assert resp.status_code == 500
+    assert resp.json() == {"detail": "Internal server error"}
+
+
+def test_delete_project_internal_error_returns_500(client, headers_a, monkeypatch):
+    """DELETE /v1/projects/{id} returns 500 if crud raises an unexpected exception."""
+    # Arrange
+    data = create_project(client, headers_a, name="Before explosion")
+
+    async def mock_err(*args, **kwargs):
+        raise Exception("Out of memory")
+
+    monkeypatch.setattr("foreman.api.v1.endpoints.projects.crud.delete_project", mock_err)
+
+    # Act
+    resp = client.delete(f"/v1/projects/{data['id']}", headers=headers_a)
+
+    # Assert
+    assert resp.status_code == 500
+    assert resp.json() == {"detail": "Internal server error"}
