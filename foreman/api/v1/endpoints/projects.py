@@ -1,5 +1,6 @@
 """Project management endpoints."""
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -9,6 +10,8 @@ from foreman.db import Database
 from foreman.models.user import User
 from foreman.repositories import postgres_projects_repository as crud
 from foreman.schemas.project import ProjectCreate, ProjectRead, ProjectUpdate
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -33,8 +36,9 @@ async def create_project(
     """Create a new design project."""
     try:
         return await crud.create_project(db=db, user_id=current_user.id, project_in=project_in)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        logger.exception("Failed to create project", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.get("/{project_id}", response_model=ProjectRead)
@@ -70,8 +74,9 @@ async def update_project(
         return project
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        logger.exception("Failed to update project", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.delete("/{project_id}", status_code=204)
