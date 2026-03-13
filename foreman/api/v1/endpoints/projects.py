@@ -11,8 +11,6 @@ from foreman.models.user import User
 from foreman.repositories import postgres_projects_repository as crud
 from foreman.schemas.project import ProjectCreate, ProjectRead, ProjectUpdate
 
-logger = logging.getLogger(__name__)
-
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
