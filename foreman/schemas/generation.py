@@ -44,6 +44,6 @@ class GenerationRead(BaseModel):
     processing_time_ms: Optional[int]
     metadata: dict[str, Any]
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime]
 
     model_config = ConfigDict(from_attributes=True)
