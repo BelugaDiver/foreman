@@ -2,9 +2,9 @@
 
 import uuid
 from datetime import datetime
-from typing import Any, Optional, Literal
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 GenerationStatus = Literal["pending", "processing", "completed", "failed", "cancelled"]
 
@@ -12,10 +12,20 @@ GenerationStatus = Literal["pending", "processing", "completed", "failed", "canc
 class GenerationCreate(BaseModel):
     """Properties to receive on generation creation."""
 
-    prompt: str
+    prompt: str = Field(min_length=1)
     style_id: Optional[str] = None
     parent_id: Optional[uuid.UUID] = None
     model_used: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("prompt")
+    @classmethod
+    def validate_prompt_not_blank(cls, value: str) -> str:
+        """Reject prompts that only contain whitespace."""
+        if not value.strip():
+            raise ValueError("Prompt cannot be blank")
+        return value
 
 
 class GenerationUpdate(BaseModel):
@@ -26,6 +36,8 @@ class GenerationUpdate(BaseModel):
     error_message: Optional[str] = None
     processing_time_ms: Optional[int] = None
     metadata: Optional[dict[str, Any]] = None
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class GenerationRead(BaseModel):
