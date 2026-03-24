@@ -12,18 +12,9 @@ from foreman.main import app
 from foreman.models.generation import Generation
 from foreman.models.user import User
 
-# ---------------------------------------------------------------------------
-# In-memory stores
-# ---------------------------------------------------------------------------
-
 users_db: dict[uuid.UUID, User] = {}
 generations_db: dict[uuid.UUID, Generation] = {}
 generation_owners: dict[uuid.UUID, uuid.UUID] = {}
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
@@ -155,11 +146,6 @@ def headers_b():
     return {"X-User-ID": "00000000-0000-0000-0000-000000000002"}
 
 
-# ---------------------------------------------------------------------------
-# Helper
-# ---------------------------------------------------------------------------
-
-
 def _seed_generation(owner_header: dict[str, str], *, status: str = "pending") -> uuid.UUID:
     """Insert a generation row into the in-memory store for tests."""
     generation_id = uuid.uuid4()
@@ -184,11 +170,6 @@ def _seed_generation(owner_header: dict[str, str], *, status: str = "pending") -
     generations_db[generation_id] = generation
     generation_owners[generation_id] = owner_id
     return generation_id
-
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
 
 
 def test_get_generation_success(client, headers_a):

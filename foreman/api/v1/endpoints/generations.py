@@ -15,7 +15,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.get("/", response_model=list[GenerationRead])
+@router.get("", response_model=list[GenerationRead])
 async def list_generations(
     limit: int = Query(20, ge=1, le=100, description="Maximum number of generations to return"),
     offset: int = Query(0, ge=0, description="Number of generations to skip"),
