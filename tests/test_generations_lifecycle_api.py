@@ -224,7 +224,7 @@ def test_cancel_generation_not_found_for_other_owner(client, headers_a, headers_
 
 
 def test_retry_generation_creates_new_record(client, headers_a):
-    """Retry should create a new generation as a child of the original."""
+    """Retry should create a new generation with same input, preserving original parent."""
     # Arrange
     original = _seed_generation(headers_a, status="failed", output_image_url=None)
 
@@ -237,7 +237,8 @@ def test_retry_generation_creates_new_record(client, headers_a):
     assert body["id"] != str(original.id)
     assert body["project_id"] == str(original.project_id)
     assert body["input_image_url"] == original.input_image_url
-    assert body["parent_id"] == str(original.id)
+    # Retry preserves original parent (idempotent re-run)
+    assert body["parent_id"] == (str(original.parent_id) if original.parent_id else None)
 
 
 def test_fork_generation_creates_child_from_output(client, headers_a):
