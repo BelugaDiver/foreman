@@ -1,6 +1,17 @@
 version: '3.8'
 
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: foreman
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
   foreman:
     build: .
     env_file:
@@ -11,6 +22,7 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318/v1/traces
       - OTEL_EXPORTER_OTLP_INSECURE=true
     depends_on:
+      - db
       - jaeger
 
   jaeger:
@@ -21,3 +33,6 @@ services:
       - "4318:4318"    # OTLP HTTP receiver
     environment:
       - COLLECTOR_OTLP_ENABLED=true
+
+volumes:
+  postgres_data:
