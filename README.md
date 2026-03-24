@@ -5,190 +5,121 @@ Foreman is the event-driven backend for managing image-generation requests for A
 ## Features
 
 - **FastAPI** - Modern, fast web framework for building APIs
-- **OpenTelemetry Integration** - Full distributed tracing and observability
-- **Health Check Endpoints** - Simple health monitoring
-- **Async Support** - Asynchronous request handling for better performance
-- **PostgreSQL Ready** - Async connection pooling via `asyncpg` without an ORM
-- **Alembic Migrations** - Raw-SQL migrations for controllable schema changes
-- **Docker Ready** - Includes Dockerfile and docker-compose for easy deployment
+- **Async PostgreSQL** - Raw SQL via `asyncpg`, no ORM
+- **Alembic Migrations** - Controllable schema changes with raw SQL
+- **OpenTelemetry** - Full distributed tracing and observability
+- **Docker** - PostgreSQL + Jaeger + API via docker-compose
 
-## Installation
+## Quick Start
 
-### Using pip
+### 1. Clone and start
 
 ```bash
-pip install -e .
+docker-compose up -d
 ```
 
-### Development Installation
-
-```bash
-pip install -e ".[dev]"
-```
-
-## Running the Application
-
-### Local Development
-
-```bash
-uvicorn foreman.main:app --reload
-```
-
-The API will be available at `http://localhost:8000`
-
-Configure the service to talk to your external PostgreSQL instance via environment variables before starting the server:
-
-```bash
-export DATABASE_URL=postgresql://username:password@db-hostname:5432/foreman
-export DB_POOL_MIN_SIZE=1         # Optional, defaults to 1
-export DB_POOL_MAX_SIZE=10        # Optional, defaults to 10
-export DB_COMMAND_TIMEOUT_SECONDS=30  # Optional
-```
-
-If `DATABASE_URL` is omitted, the API will start but database helpers remain unavailable. This is useful for quick local smoke tests, but production deployments **must** provide a valid PostgreSQL DSN.
-
-### With Docker Compose (includes Jaeger for tracing)
-
-```bash
-docker-compose up
-```
-
-- API: `http://localhost:8000`
-- Jaeger UI: `http://localhost:16686`
-
-Docker Compose loads sensitive settings from `.env.foreman`, which you should create locally (or in CI) by copying `.env.foreman.example` and filling in the real credentials. The file is ignored by git, so each environment can manage its own secrets without exposing them in `docker-compose.yml`.
-
-When the API container needs to reach a PostgreSQL instance that is running on your host machine, set the hostname portion of `DATABASE_URL` to `host.docker.internal` (Docker Desktop) or configure an extra host entry (`extra_hosts: ["host.docker.internal:host-gateway"]`) on Linux. Ensure PostgreSQL is listening on non-loopback interfaces and that your firewall allows inbound connections.
-
-## API Documentation
-
-Once the application is running, you can access:
-
-- **Swagger UI**: `http://localhost:8000/docs`
-- **ReDoc**: `http://localhost:8000/redoc`
-
-## API Endpoints
-
-### Health Check
-
-- `GET /` - Root endpoint with health check
-- `GET /health` - Health check endpoint
-
-## Example Usage
-
-### Check Health
+### 2. Verify
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-Response:
+### 3. Explore
 
-```json
-{
-  "status": "healthy",
-  "version": "0.1.0",
-  "service": "foreman"
-}
-```
+- **API**: http://localhost:8000
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+- **Jaeger UI**: http://localhost:16686
 
-## Database Migrations
+---
 
-Foreman ships with Alembic configured for raw-SQL migrations while the application itself talks directly to PostgreSQL using `asyncpg` (no ORM layer).
+## Development
 
-1. Install the dev/migrations tooling:
-
-  ```bash
-  pip install -e ".[dev]"
-  ```
-
-2. Ensure `DATABASE_URL` points at the database you want to mutate (e.g., `postgresql://user:pass@host.docker.internal:5432/foreman`).
-3. Create a new revision (edit the generated file under `migrations/versions/`):
-
-  ```bash
-  alembic revision -m "create jobs table"
-  ```
-
-4. Apply the latest schema:
-
-  ```bash
-  alembic upgrade head
-  ```
-
-All migration files are plain Python functions; express the desired DDL with `op.execute("... SQL ...")` or `op.create_table(...)` helpers. Since PostgreSQL is expected to run as an external service, ensure your network/security rules allow Alembic to connect from your workstation or CI runner.
-
-## OpenTelemetry Configuration
-
-The application supports OpenTelemetry instrumentation. Configure the OTLP endpoint using environment variables:
+### Local Setup
 
 ```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
-uvicorn foreman.main:app
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+pip install -e ".[dev]"
+
+# Copy environment config
+cp .env.foreman.example .env.foreman.local
+# Edit .env.foreman.local with your database credentials
 ```
 
-If no endpoint is configured, the application will run without exporting traces.
-
-### Security Configuration
-
-For production deployments, configure these environment variables:
+### Run Migrations
 
 ```bash
-# Use specific allowed origins instead of wildcard
-export CORS_ORIGINS=https://yourdomain.com,https://api.yourdomain.com
-
-# Use secure OTLP connections with TLS
-export OTEL_EXPORTER_OTLP_INSECURE=false
-export OTEL_EXPORTER_OTLP_ENDPOINT=https://your-collector:4317
+alembic upgrade head
 ```
 
-## Testing
+### Run the App
 
-Run tests with pytest:
+```bash
+uvicorn foreman.main:app --reload
+```
+
+### Run Tests
 
 ```bash
 pytest
 ```
 
-Run with coverage:
-
-```bash
-pytest --cov=foreman tests/
-```
-
-## Development
-
-### Code Formatting
-
-The project uses Ruff for linting and formatting:
+### Lint & Format
 
 ```bash
 ruff check .
 ruff format .
 ```
 
+---
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATABASE_URL` | PostgreSQL connection string | Required |
+| `DB_POOL_MIN_SIZE` | Connection pool min | 1 |
+| `DB_POOL_MAX_SIZE` | Connection pool max | 10 |
+| `DB_COMMAND_TIMEOUT_SECONDS` | Query timeout | 30 |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint for tracing | - |
+| `CORS_ORIGINS` | Allowed CORS origins | * |
+
+### Docker
+
+Docker Compose loads settings from `.env.foreman`. Create it from the example:
+
+```bash
+cp .env.foreman.example .env.foreman
+# Edit with your secrets
+```
+
+---
+
 ## Project Structure
 
 ```
 foreman/
-├── foreman/
-│   ├── __init__.py       # Package initialization
-│   ├── main.py           # FastAPI application
-│   ├── models.py         # Pydantic models
-│   ├── db.py             # Async PostgreSQL utilities (pools, helpers)
-│   └── telemetry.py      # OpenTelemetry configuration
-├── tests/
-│   ├── __init__.py
-│   ├── test_main.py      # Application tests
-│   ├── test_db.py        # Database helper tests
-│   └── test_telemetry.py # Telemetry tests
-├── migrations/           # Alembic environment and revisions
-├── Dockerfile            # Docker image configuration
-├── docker-compose.yml    # Docker compose with Jaeger
-├── .env.foreman.example  # Template for secrets used by docker-compose
-├── alembic.ini           # Alembic configuration
-├── pyproject.toml        # Project dependencies
-└── README.md            # This file
+├── foreman/              # Main application
+│   ├── main.py          # FastAPI app entry point
+│   ├── db.py            # Async PostgreSQL utilities
+│   ├── models/          # Dataclass models
+│   ├── schemas/          # Pydantic schemas
+│   ├── repositories/    # Database CRUD operations
+│   ├── api/             # API endpoints
+│   └── telemetry.py     # OpenTelemetry setup
+├── tests/               # Test suite
+├── migrations/          # Alembic migrations
+├── docker-compose.yml   # PostgreSQL + Jaeger + API
+└── alembic.ini         # Alembic configuration
 ```
+
+---
 
 ## License
 
