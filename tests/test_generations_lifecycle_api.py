@@ -242,6 +242,44 @@ def test_retry_generation_creates_new_record(client, headers_a):
     assert body["input_image_url"] == original.input_image_url
     # Retry preserves original parent (idempotent re-run)
     assert body["parent_id"] == (str(original.parent_id) if original.parent_id else None)
+    assert body["attempt"] == 2
+
+
+def test_retry_rejects_completed(client, headers_a):
+    """Retry should return 400 when the generation is completed."""
+    # Arrange
+    original = _seed_generation(headers_a, status="completed", output_image_url="https://example.com/out.jpg")
+
+    # Act
+    response = client.post(f"/v1/generations/{original.id}/retry", headers=headers_a)
+
+    # Assert
+    assert response.status_code == 400
+    assert "Can only retry failed or cancelled" in response.json()["detail"]
+
+
+def test_retry_rejects_pending(client, headers_a):
+    """Retry should return 400 when the generation is still pending."""
+    # Arrange
+    original = _seed_generation(headers_a, status="pending", output_image_url=None)
+
+    # Act
+    response = client.post(f"/v1/generations/{original.id}/retry", headers=headers_a)
+
+    # Assert
+    assert response.status_code == 400
+
+
+def test_retry_rejects_processing(client, headers_a):
+    """Retry should return 400 when the generation is still processing."""
+    # Arrange
+    original = _seed_generation(headers_a, status="processing", output_image_url=None)
+
+    # Act
+    response = client.post(f"/v1/generations/{original.id}/retry", headers=headers_a)
+
+    # Assert
+    assert response.status_code == 400
 
 
 def test_fork_generation_creates_child_from_output(client, headers_a):

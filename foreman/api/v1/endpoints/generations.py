@@ -151,6 +151,11 @@ async def retry_generation(
         )
         if not original:
             raise HTTPException(status_code=404, detail="Generation not found")
+        if original.status not in {"failed", "cancelled"}:
+            raise HTTPException(
+                status_code=400,
+                detail="Can only retry failed or cancelled generations",
+            )
 
         generation_in = GenerationCreate(
             prompt=original.prompt,
