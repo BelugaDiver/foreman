@@ -17,6 +17,7 @@ def _generation_record(
     *,
     prompt: str = "Modern minimalist living room",
     status: str = "pending",
+    attempt: int = 1,
 ) -> dict:
     """Return a generation row-like dictionary for repository tests."""
     now = datetime.now(timezone.utc)
@@ -32,6 +33,7 @@ def _generation_record(
         "error_message": None,
         "model_used": "gpt-image-1",
         "processing_time_ms": None,
+        "attempt": attempt,
         "metadata": {},
         "created_at": now,
         "updated_at": now,
@@ -68,6 +70,7 @@ async def test_create_generation_inserts_and_returns_generation() -> None:
         "warm",
         None,
         "https://example.com/original.jpg",
+        1,
     )
 
 

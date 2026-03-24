@@ -157,6 +157,7 @@ async def retry_generation(
             style_id=original.style_id,
             parent_id=original.parent_id,
             model_used=original.model_used,
+            attempt=original.attempt + 1,
         )
         return await repo.create_generation(
             db=db,

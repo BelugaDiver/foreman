@@ -20,12 +20,13 @@ async def create_generation(
     generation_in: GenerationCreate,
 ) -> Generation:
     """Insert a new generation row and return it."""
+    attempt = generation_in.attempt if generation_in.attempt is not None else 1
     stmt = sql(
         """
         INSERT INTO generations (
-            project_id, parent_id, prompt, style_id, model_used, input_image_url
+            project_id, parent_id, prompt, style_id, model_used, input_image_url, attempt
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING *
         """,
         project_id,
@@ -34,6 +35,7 @@ async def create_generation(
         generation_in.style_id,
         generation_in.model_used,
         input_image_url,
+        attempt,
     )
     record = await db.fetchrow(stmt)
     if not record:

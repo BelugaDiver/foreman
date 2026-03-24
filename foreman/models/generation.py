@@ -21,6 +21,7 @@ class Generation:
     error_message: Optional[str]
     model_used: Optional[str]
     processing_time_ms: Optional[int]
+    attempt: int
     metadata: dict[str, Any]
     created_at: datetime
     updated_at: Optional[datetime]

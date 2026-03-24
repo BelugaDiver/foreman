@@ -16,6 +16,7 @@ class GenerationCreate(BaseModel):
     style_id: Optional[str] = None
     parent_id: Optional[uuid.UUID] = None
     model_used: Optional[str] = None
+    attempt: Optional[int] = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -54,6 +55,7 @@ class GenerationRead(BaseModel):
     output_image_url: Optional[str]
     error_message: Optional[str]
     processing_time_ms: Optional[int]
+    attempt: int
     metadata: dict[str, Any]
     created_at: datetime
     updated_at: Optional[datetime]

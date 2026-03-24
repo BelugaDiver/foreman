@@ -177,6 +177,7 @@ def _seed_generation(owner_header: dict[str, str], *, status: str = "pending") -
         error_message=None,
         model_used="gpt-image-1",
         processing_time_ms=None,
+        attempt=1,
         metadata={},
         created_at=now,
         updated_at=None,

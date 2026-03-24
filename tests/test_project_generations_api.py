@@ -97,6 +97,7 @@ def mock_dependencies(monkeypatch):
         return generation
 
     async def mock_create_generation(db, project_id, input_image_url, generation_in: GenerationCreate):
+        attempt = generation_in.attempt if generation_in.attempt is not None else 1
         generation = Generation(
             id=uuid.uuid4(),
             project_id=project_id,
@@ -109,6 +110,7 @@ def mock_dependencies(monkeypatch):
             error_message=None,
             model_used=generation_in.model_used,
             processing_time_ms=None,
+            attempt=attempt,
             metadata={},
             created_at=datetime.now(timezone.utc),
             updated_at=None,
@@ -203,6 +205,7 @@ def _seed_completed_generation(owner_headers: dict[str, str], project_id: str) -
         error_message=None,
         model_used="gpt-image-1",
         processing_time_ms=900,
+        attempt=1,
         metadata={},
         created_at=datetime.now(timezone.utc),
         updated_at=None,
