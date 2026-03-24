@@ -415,3 +415,41 @@ def test_update_generation_extra_fields_returns_422(client, headers_a):
 
     # Assert
     assert response.status_code == 422
+
+
+def test_list_generations_internal_error_returns_500(client, headers_a, monkeypatch):
+    """GET /v1/generations returns 500 on unexpected repository errors."""
+    # Arrange
+    async def mock_error(*args, **kwargs):
+        raise Exception("DB outage")
+
+    monkeypatch.setattr("foreman.api.v1.endpoints.generations.repo.list_generations", mock_error)
+
+    # Act
+    response = client.get("/v1/generations", headers=headers_a)
+
+    # Assert
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Internal server error"}
+
+
+def test_update_generation_internal_error_returns_500(client, headers_a, monkeypatch):
+    """PATCH /v1/generations/{id} returns 500 on unexpected repository errors."""
+    # Arrange
+    generation_id = _seed_generation(headers_a)
+
+    async def mock_error(*args, **kwargs):
+        raise Exception("DB outage")
+
+    monkeypatch.setattr("foreman.api.v1.endpoints.generations.repo.update_generation", mock_error)
+
+    # Act
+    response = client.patch(
+        f"/v1/generations/{generation_id}",
+        headers=headers_a,
+        json={"status": "completed"},
+    )
+
+    # Assert
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Internal server error"}

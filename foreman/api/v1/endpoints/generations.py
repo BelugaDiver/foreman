@@ -23,12 +23,16 @@ async def list_generations(
     db: Database = Depends(get_db),
 ):
     """List all generations for the current user."""
-    return await repo.list_generations(
-        db=db,
-        user_id=current_user.id,
-        limit=limit,
-        offset=offset,
-    )
+    try:
+        return await repo.list_generations(
+            db=db,
+            user_id=current_user.id,
+            limit=limit,
+            offset=offset,
+        )
+    except Exception:
+        logger.exception("Error listing generations")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/{generation_id}", response_model=GenerationRead)
@@ -151,7 +155,7 @@ async def retry_generation(
         generation_in = GenerationCreate(
             prompt=original.prompt,
             style_id=original.style_id,
-            parent_id=original.parent_id,
+            parent_id=original.id,
             model_used=original.model_used,
         )
         return await repo.create_generation(
