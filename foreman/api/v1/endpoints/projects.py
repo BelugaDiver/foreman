@@ -3,12 +3,14 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from foreman.api.deps import get_current_user, get_db
 from foreman.db import Database
 from foreman.models.user import User
+from foreman.repositories import postgres_generations_repository as gen_repo
 from foreman.repositories import postgres_projects_repository as crud
+from foreman.schemas.generation import GenerationCreate, GenerationRead
 from foreman.schemas.project import ProjectCreate, ProjectRead, ProjectUpdate
 
 router = APIRouter()
@@ -51,6 +53,79 @@ async def get_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
+
+
+@router.post("/{project_id}/generations", response_model=GenerationRead, status_code=202)
+async def create_generation(
+    project_id: uuid.UUID,
+    generation_in: GenerationCreate,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: Database = Depends(get_db),
+):
+    """Create a generation for a project using root image or a parent generation."""
+    try:
+        if generation_in.parent_id:
+            parent = await gen_repo.get_generation_by_id(
+                db=db,
+                generation_id=generation_in.parent_id,
+                user_id=current_user.id,
+            )
+            if not parent:
+                raise HTTPException(status_code=400, detail="Invalid parent generation")
+            if parent.project_id != project_id:
+                raise HTTPException(status_code=400, detail="Parent belongs to different project")
+            if not parent.output_image_url:
+                raise HTTPException(status_code=400, detail="Parent generation has no output image")
+            input_image_url = parent.output_image_url
+        else:
+            project = await crud.get_project_by_id(
+                db=db, project_id=project_id, user_id=current_user.id
+            )
+            if not project:
+                raise HTTPException(status_code=404, detail="Project not found")
+            if not project.original_image_url:
+                raise HTTPException(status_code=400, detail="Project has no original image")
+            input_image_url = project.original_image_url
+
+        generation = await gen_repo.create_generation(
+            db=db,
+            project_id=project_id,
+            input_image_url=input_image_url,
+            generation_in=generation_in,
+        )
+        response.headers["Location"] = f"/v1/generations/{generation.id}"
+        return generation
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error creating generation")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/{project_id}/generations", response_model=list[GenerationRead])
+async def list_project_generations(
+    project_id: uuid.UUID,
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of generations to return"),
+    offset: int = Query(0, ge=0, description="Number of generations to skip"),
+    current_user: User = Depends(get_current_user),
+    db: Database = Depends(get_db),
+):
+    """List generations for a single project scoped to the current user."""
+    project = await crud.get_project_by_id(
+        db=db,
+        project_id=project_id,
+        user_id=current_user.id,
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return await gen_repo.list_generations_by_project(
+        db=db,
+        project_id=project_id,
+        user_id=current_user.id,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.patch("/{project_id}", response_model=ProjectRead)

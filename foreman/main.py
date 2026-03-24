@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from foreman import __version__
-from foreman.api.v1.endpoints import projects, users
+from foreman.api.v1.endpoints import generations, projects, users
 from foreman.db import Database, DatabaseSettings
 from foreman.repositories import postgres_users_repository as crud
 from foreman.schemas.health_check import HealthCheck
@@ -81,6 +81,7 @@ instrument_app(app)
 # Include API routers
 app.include_router(users.router, prefix="/v1/users", tags=["users"])
 app.include_router(projects.router, prefix="/v1/projects", tags=["projects"])
+app.include_router(generations.router, prefix="/v1/generations", tags=["generations"])
 
 
 @app.get("/", response_model=HealthCheck)
