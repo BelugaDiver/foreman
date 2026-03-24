@@ -342,9 +342,8 @@ def test_list_project_generations_scoped_by_project_and_user(client, headers_a, 
     assert len(list_response_a.json()) == 1
     assert list_response_a.json()[0]["prompt"] == "A1 gen"
 
-    # User B doesn't own project_a1, should get empty list (project filtering handled in repo)
-    assert list_response_b.status_code == 200
-    assert list_response_b.json() == []
+    # User B doesn't own project_a1, should get 404
+    assert list_response_b.status_code == 404
 
 
 def test_nested_generation_routes_require_auth(client):
