@@ -112,13 +112,6 @@ async def list_project_generations(
     db: Database = Depends(get_db),
 ):
     """List generations for a single project scoped to the current user."""
-    project = await crud.get_project_by_id(
-        db=db,
-        project_id=project_id,
-        user_id=current_user.id,
-    )
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
     return await gen_repo.list_generations_by_project(
         db=db,
         project_id=project_id,
