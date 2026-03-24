@@ -260,3 +260,33 @@ async def test_delete_generation_returns_false_when_not_found_or_not_owned() -> 
 
     # Assert
     assert deleted is False
+
+
+@pytest.mark.asyncio
+async def test_list_generations_returns_paginated_rows() -> None:
+    """list_generations should return paginated generations scoped to user."""
+    # Arrange
+    db = AsyncMock()
+    project_id = uuid.uuid4()
+    db.fetch = AsyncMock(
+        return_value=[
+            _generation_record(uuid.uuid4(), project_id, prompt="Design A"),
+            _generation_record(uuid.uuid4(), project_id, prompt="Design B"),
+        ]
+    )
+
+    # Act
+    generations = await repo.list_generations(
+        db=db,
+        user_id=USER_A_ID,
+        limit=10,
+        offset=5,
+    )
+
+    # Assert
+    assert len(generations) == 2
+    assert [g.prompt for g in generations] == ["Design A", "Design B"]
+    stmt = db.fetch.await_args.args[0]
+    assert "ORDER BY g.created_at DESC" in stmt.text
+    assert "p.user_id=$1" in stmt.text
+    assert stmt.params == (USER_A_ID, 10, 5)

@@ -3,7 +3,7 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from foreman.api.deps import get_current_user, get_db
 from foreman.db import Database
@@ -13,6 +13,22 @@ from foreman.schemas.generation import GenerationCreate, GenerationRead, Generat
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+@router.get("", response_model=list[GenerationRead])
+async def list_generations(
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of generations to return"),
+    offset: int = Query(0, ge=0, description="Number of generations to skip"),
+    current_user: User = Depends(get_current_user),
+    db: Database = Depends(get_db),
+):
+    """List all generations for the current user."""
+    return await repo.list_generations(
+        db=db,
+        user_id=current_user.id,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/{generation_id}", response_model=GenerationRead)
@@ -30,6 +46,31 @@ async def get_generation(
     if not generation:
         raise HTTPException(status_code=404, detail="Generation not found")
     return generation
+
+
+@router.patch("/{generation_id}", response_model=GenerationRead)
+async def update_generation(
+    generation_id: uuid.UUID,
+    generation_in: GenerationUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Database = Depends(get_db),
+):
+    """Update a generation owned by the current user."""
+    try:
+        updated = await repo.update_generation(
+            db=db,
+            generation_id=generation_id,
+            user_id=current_user.id,
+            generation_in=generation_in,
+        )
+        if not updated:
+            raise HTTPException(status_code=404, detail="Generation not found")
+        return updated
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error updating generation")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/{generation_id}", status_code=204)

@@ -83,6 +83,26 @@ def mock_dependencies(monkeypatch):
         del generation_owners[generation_id]
         return True
 
+    async def mock_list_generations(db, user_id, limit=20, offset=0):
+        user_generations = [
+            g for g_id, g in generations_db.items()
+            if generation_owners.get(g_id) == user_id
+        ]
+        user_generations.sort(key=lambda x: x.created_at, reverse=True)
+        return user_generations[offset:offset + limit]
+
+    async def mock_update_generation(db, generation_id, user_id, generation_in):
+        generation = generations_db.get(generation_id)
+        if not generation:
+            return None
+        if generation_owners.get(generation_id) != user_id:
+            return None
+        update_data = generation_in.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(generation, key, value)
+        generation.updated_at = datetime.now(timezone.utc)
+        return generation
+
     monkeypatch.setattr(
         "foreman.api.v1.endpoints.generations.repo.get_generation_by_id",
         mock_get_generation_by_id,
@@ -90,6 +110,14 @@ def mock_dependencies(monkeypatch):
     monkeypatch.setattr(
         "foreman.api.v1.endpoints.generations.repo.delete_generation",
         mock_delete_generation,
+    )
+    monkeypatch.setattr(
+        "foreman.api.v1.endpoints.generations.repo.list_generations",
+        mock_list_generations,
+    )
+    monkeypatch.setattr(
+        "foreman.api.v1.endpoints.generations.repo.update_generation",
+        mock_update_generation,
     )
 
     yield
@@ -249,3 +277,141 @@ def test_delete_generation_internal_error_returns_500(client, headers_a, monkeyp
     # Assert
     assert response.status_code == 500
     assert response.json() == {"detail": "Internal server error"}
+
+
+def test_list_generations_empty(client, headers_a):
+    """GET /v1/generations should return empty list when no generations exist."""
+    # Act
+    response = client.get("/v1/generations", headers=headers_a)
+
+    # Assert
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_list_generations_with_data(client, headers_a):
+    """GET /v1/generations should return user's generations."""
+    # Arrange
+    _seed_generation(headers_a)
+    _seed_generation(headers_a)
+    _seed_generation(headers_a, status="completed")
+
+    # Act
+    response = client.get("/v1/generations", headers=headers_a)
+
+    # Assert
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 3
+
+
+def test_list_generations_excludes_other_users(client, headers_a, headers_b):
+    """GET /v1/generations should not include other users' generations."""
+    # Arrange
+    _seed_generation(headers_a)
+    _seed_generation(headers_b)
+
+    # Act
+    response = client.get("/v1/generations", headers=headers_a)
+
+    # Assert
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+
+
+def test_list_generations_pagination(client, headers_a):
+    """GET /v1/generations should support pagination."""
+    # Arrange
+    for _ in range(5):
+        _seed_generation(headers_a)
+
+    # Act
+    response = client.get("/v1/generations?limit=2&offset=0", headers=headers_a)
+
+    # Assert
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 2
+
+
+def test_list_generations_unauthenticated(client):
+    """GET /v1/generations without auth should return 401."""
+    # Act
+    response = client.get("/v1/generations")
+
+    # Assert
+    assert response.status_code == 401
+
+
+def test_update_generation_success(client, headers_a):
+    """PATCH /v1/generations/{id} should update allowed fields."""
+    # Arrange
+    generation_id = _seed_generation(headers_a)
+
+    # Act
+    response = client.patch(
+        f"/v1/generations/{generation_id}",
+        headers=headers_a,
+        json={"status": "completed", "output_image_url": "https://example.com/output.jpg"},
+    )
+
+    # Assert
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "completed"
+    assert body["output_image_url"] == "https://example.com/output.jpg"
+
+
+def test_update_generation_not_found(client, headers_a):
+    """PATCH /v1/generations/{id} should return 404 for unknown IDs."""
+    # Act
+    response = client.patch(
+        f"/v1/generations/{uuid.uuid4()}",
+        headers=headers_a,
+        json={"status": "completed"},
+    )
+
+    # Assert
+    assert response.status_code == 404
+
+
+def test_update_generation_ownership(client, headers_a, headers_b):
+    """A user cannot update another user's generation."""
+    # Arrange
+    generation_id = _seed_generation(headers_a)
+
+    # Act
+    response = client.patch(
+        f"/v1/generations/{generation_id}",
+        headers=headers_b,
+        json={"status": "completed"},
+    )
+
+    # Assert
+    assert response.status_code == 404
+
+
+def test_update_generation_unauthenticated(client):
+    """PATCH /v1/generations/{id} without auth should return 401."""
+    # Act
+    response = client.patch(f"/v1/generations/{uuid.uuid4()}", json={"status": "completed"})
+
+    # Assert
+    assert response.status_code == 401
+
+
+def test_update_generation_extra_fields_returns_422(client, headers_a):
+    """PATCH /v1/generations/{id} with unknown fields should return 422."""
+    # Arrange
+    generation_id = _seed_generation(headers_a)
+
+    # Act
+    response = client.patch(
+        f"/v1/generations/{generation_id}",
+        headers=headers_a,
+        json={"status": "completed", "unknown_field": "value"},
+    )
+
+    # Assert
+    assert response.status_code == 422

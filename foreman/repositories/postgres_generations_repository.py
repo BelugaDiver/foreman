@@ -89,6 +89,30 @@ async def list_generations_by_project(
     return [Generation(**dict(record)) for record in records]
 
 
+async def list_generations(
+    db: Database,
+    user_id: uuid.UUID,
+    limit: int = 20,
+    offset: int = 0,
+) -> list[Generation]:
+    """Return a paginated list of all generations owned by *user_id*."""
+    stmt = sql(
+        """
+        SELECT g.*
+        FROM generations g
+        JOIN projects p ON g.project_id = p.id
+        WHERE p.user_id=$1
+        ORDER BY g.created_at DESC
+        LIMIT $2 OFFSET $3
+        """,
+        user_id,
+        limit,
+        offset,
+    )
+    records = await db.fetch(stmt)
+    return [Generation(**dict(record)) for record in records]
+
+
 async def update_generation(
     db: Database,
     generation_id: uuid.UUID,
