@@ -5,7 +5,9 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from foreman.api.deps import get_current_user, get_db
+from foreman.audit import AuditEvent, log_audit
 from foreman.db import Database
+from foreman.logging_config import get_logger
 from foreman.models.user import User
 from foreman.repositories import postgres_images_repository as crud
 from foreman.repositories import postgres_projects_repository as project_crud
@@ -13,6 +15,7 @@ from foreman.schemas.image import ImageCreate, ImageRead, ImageUploadIntent, Ima
 from foreman.storage import StorageProtocol, get_storage_sync
 
 router = APIRouter()
+logger = get_logger("foreman.endpoints.images")
 
 
 async def get_storage() -> StorageProtocol:
@@ -37,6 +40,15 @@ async def create_upload_intent(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    logger.info(
+        "Creating upload intent",
+        extra={
+            "project_id": str(project_id),
+            "filename": request.filename,
+            "content_type": request.content_type,
+        },
+    )
+
     intent = await storage.create_upload_url(request.filename, request.content_type, project_id)
 
     image_in = ImageCreate(
@@ -52,6 +64,14 @@ async def create_upload_intent(
         image = await crud.create_image(db, image_in, url=None)
     except Exception:
         raise HTTPException(status_code=500, detail="Internal server error")
+
+    logger.info(
+        "Upload intent created",
+        extra={
+            "image_id": str(image.id),
+            "project_id": str(project_id),
+        },
+    )
 
     return ImageUploadIntent(
         upload_url=intent.upload_url,
@@ -77,6 +97,16 @@ async def list_images(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    logger.debug(
+        "Listing images",
+        extra={
+            "project_id": str(project_id),
+            "user_id": str(current_user.id),
+            "limit": limit,
+            "offset": offset,
+        },
+    )
+
     images = await crud.list_images(db, project_id, current_user.id, limit, offset)
     return images
 
@@ -95,6 +125,11 @@ async def get_image(
     image = await crud.get_image_by_id(db, image_id, current_user.id)
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
+
+    logger.info(
+        "Image retrieved",
+        extra={"image_id": str(image_id), "user_id": str(current_user.id)},
+    )
 
     download_url = await storage.get_download_url(image.storage_key)
 
@@ -120,9 +155,21 @@ async def delete_image(
     try:
         await storage.delete(image.storage_key)
     except Exception:
-        pass
+        logger.warning(
+            "Storage delete failed, proceeding with DB delete",
+            extra={"image_id": str(image_id), "storage_key": image.storage_key},
+            exc_info=True,
+        )
 
     try:
         await crud.delete_image(db, image_id, current_user.id)
     except Exception:
         raise HTTPException(status_code=500, detail="Internal server error")
+
+    log_audit(
+        AuditEvent.IMAGE_DELETED,
+        str(current_user.id),
+        resource_id=str(image_id),
+        resource_type="image",
+    )
+    logger.info("Image deleted", extra={"image_id": str(image_id)})
