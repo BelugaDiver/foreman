@@ -4,8 +4,11 @@ import uuid
 from typing import Optional
 
 from foreman.db import Database, sql
+from foreman.logging_config import get_logger
 from foreman.models.image import Image
 from foreman.schemas.image import ImageCreate, ImageUpdate
+
+logger = get_logger("foreman.repositories.images")
 
 ALLOWED_UPDATE_FIELDS: frozenset[str] = frozenset({"url"})
 
@@ -18,6 +21,7 @@ async def list_images(
     offset: int = 0,
 ) -> list[Image]:
     """Return a paginated list of images for a project."""
+    logger.debug("Listing images", extra={"project_id": str(project_id), "user_id": str(user_id)})
     stmt = sql(
         """
         SELECT * FROM images
@@ -40,6 +44,7 @@ async def get_image_by_id(
     user_id: uuid.UUID,
 ) -> Optional[Image]:
     """Retrieve a single image by ID scoped to the owning user."""
+    logger.debug("Fetching image", extra={"image_id": str(image_id), "user_id": str(user_id)})
     stmt = sql(
         "SELECT * FROM images WHERE id=$1 AND user_id=$2",
         image_id,
@@ -57,6 +62,10 @@ async def create_image(
     url: Optional[str] = None,
 ) -> Image:
     """Insert a new image row and return it."""
+    logger.info(
+        "Creating image record",
+        extra={"project_id": str(image_in.project_id), "filename": image_in.filename},
+    )
     stmt = sql(
         """
         INSERT INTO images
@@ -94,6 +103,8 @@ async def update_image(
     if not update_data:
         return await get_image_by_id(db, image_id, user_id)
 
+    logger.debug("Updating image", extra={"image_id": str(image_id)})
+
     set_clauses: list[str] = []
     params: list = []
 
@@ -124,6 +135,7 @@ async def delete_image(
     user_id: uuid.UUID,
 ) -> bool:
     """Hard-delete an image row. Returns True if a row was deleted."""
+    logger.info("Deleting image", extra={"image_id": str(image_id)})
     stmt = sql(
         "DELETE FROM images WHERE id=$1 AND user_id=$2 RETURNING id",
         image_id,

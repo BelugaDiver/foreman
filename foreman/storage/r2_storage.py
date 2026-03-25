@@ -8,8 +8,11 @@ from datetime import datetime, timedelta, timezone
 import boto3
 from botocore.config import Config
 
+from foreman.logging_config import get_logger
 from foreman.storage.protocol import StorageProtocol, UploadIntent
 from foreman.storage.settings import R2Settings
+
+logger = get_logger("foreman.storage.r2")
 
 
 class R2Storage(StorageProtocol):
@@ -28,6 +31,7 @@ class R2Storage(StorageProtocol):
             config=Config(signature_version="s3v4"),
         )
         self._bucket = settings.bucket
+        logger.info("R2 Storage initialized", extra={"bucket": self._bucket})
 
     async def create_upload_url(
         self,
@@ -35,6 +39,14 @@ class R2Storage(StorageProtocol):
         content_type: str,
         project_id: uuid.UUID,
     ) -> UploadIntent:
+        logger.debug(
+            "Generating presigned upload URL",
+            extra={
+                "filename": filename,
+                "content_type": content_type,
+                "project_id": str(project_id),
+            },
+        )
         key = f"projects/{project_id}/{uuid.uuid4()}/{filename}"
         expires = timedelta(hours=1)
 
@@ -55,6 +67,7 @@ class R2Storage(StorageProtocol):
         )
 
     async def get_download_url(self, storage_key: str) -> str:
+        logger.debug("Generating presigned download URL", extra={"storage_key": storage_key})
         if self._settings.public_url:
             return f"{self._settings.public_url}/{storage_key}"
 
@@ -66,5 +79,6 @@ class R2Storage(StorageProtocol):
         )
 
     async def delete(self, storage_key: str) -> bool:
+        logger.info("Deleting object from R2", extra={"storage_key": storage_key})
         self._client.delete_object(Bucket=self._bucket, Key=storage_key)
         return True
