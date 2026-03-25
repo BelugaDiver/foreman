@@ -1,18 +1,18 @@
 """User management endpoints."""
 
-import logging
-
 from asyncpg.exceptions import UniqueViolationError
 from fastapi import APIRouter, Depends, HTTPException
 
 from foreman.api.deps import get_current_user, get_db
+from foreman.audit import AuditEvent, log_audit
 from foreman.db import Database
+from foreman.logging_config import get_logger
 from foreman.models.user import User
 from foreman.repositories import postgres_users_repository as crud
 from foreman.schemas.user import UserCreate, UserRead, UserUpdate
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = get_logger("foreman.endpoints.users")
 
 
 @router.post("/", response_model=UserRead, status_code=201)
@@ -23,6 +23,7 @@ async def create_user(
     """Register a new user."""
     try:
         user = await crud.create_user(db=db, user_in=user_in)
+        logger.info("User created", extra={"user_id": str(user.id), "email": user.email})
         return user
     except UniqueViolationError:
         raise HTTPException(status_code=400, detail="User with this email already exists")
@@ -50,6 +51,12 @@ async def update_user_me(
         user = await crud.update_user(db=db, user_id=current_user.id, user_in=user_in)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
+        log_audit(
+            AuditEvent.USER_UPDATED,
+            str(current_user.id),
+            resource_id=str(current_user.id),
+            resource_type="user",
+        )
         return user
     except UniqueViolationError:
         raise HTTPException(status_code=400, detail="User with this email already exists")
@@ -68,8 +75,13 @@ async def delete_user_me(
         success = await crud.soft_delete_user(db=db, user_id=current_user.id)
         if not success:
             raise HTTPException(status_code=404, detail="User not found")
-    except HTTPException:
-        raise
+        log_audit(
+            AuditEvent.USER_DELETED,
+            str(current_user.id),
+            resource_id=str(current_user.id),
+            resource_type="user",
+        )
+        logger.info("User deleted", extra={"user_id": str(current_user.id)})
     except Exception:
         logger.exception("Error deleting user")
         raise HTTPException(status_code=500, detail="Internal server error")
