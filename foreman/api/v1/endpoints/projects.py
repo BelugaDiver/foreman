@@ -1,12 +1,13 @@
 """Project management endpoints."""
 
-import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from foreman.api.deps import get_current_user, get_db
+from foreman.audit import AuditEvent, log_audit
 from foreman.db import Database
+from foreman.logging_config import get_logger
 from foreman.models.user import User
 from foreman.repositories import postgres_generations_repository as gen_repo
 from foreman.repositories import postgres_projects_repository as crud
@@ -14,7 +15,7 @@ from foreman.schemas.generation import GenerationCreate, GenerationRead
 from foreman.schemas.project import ProjectCreate, ProjectRead, ProjectUpdate
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = get_logger("foreman.endpoints.projects")
 
 
 @router.get("/", response_model=list[ProjectRead])
@@ -25,6 +26,10 @@ async def list_projects(
     db: Database = Depends(get_db),
 ):
     """List all projects for the current user."""
+    logger.debug(
+        "Listing projects",
+        extra={"user_id": str(current_user.id), "limit": limit, "offset": offset},
+    )
     return await crud.list_projects(db=db, user_id=current_user.id, limit=limit, offset=offset)
 
 
@@ -36,7 +41,12 @@ async def create_project(
 ):
     """Create a new design project."""
     try:
-        return await crud.create_project(db=db, user_id=current_user.id, project_in=project_in)
+        project = await crud.create_project(db=db, user_id=current_user.id, project_in=project_in)
+        logger.info(
+            "Project created",
+            extra={"project_id": str(project.id), "user_id": str(current_user.id)},
+        )
+        return project
     except Exception:
         logger.exception("Error creating project")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -88,6 +98,10 @@ async def create_generation(
                 raise HTTPException(status_code=400, detail="Project has no original image")
             input_image_url = project.original_image_url
 
+        logger.debug(
+            "Creating generation for project",
+            extra={"project_id": str(project_id), "user_id": str(current_user.id)},
+        )
         generation = await gen_repo.create_generation(
             db=db,
             project_id=project_id,
@@ -145,6 +159,13 @@ async def update_project(
         )
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
+        log_audit(
+            AuditEvent.PROJECT_UPDATED,
+            str(current_user.id),
+            resource_id=str(project_id),
+            resource_type="project",
+        )
+        logger.info("Project updated", extra={"project_id": str(project_id)})
         return project
     except HTTPException:
         raise
@@ -164,6 +185,13 @@ async def delete_project(
         success = await crud.delete_project(db=db, project_id=project_id, user_id=current_user.id)
         if not success:
             raise HTTPException(status_code=404, detail="Project not found")
+        log_audit(
+            AuditEvent.PROJECT_DELETED,
+            str(current_user.id),
+            resource_id=str(project_id),
+            resource_type="project",
+        )
+        logger.info("Project deleted", extra={"project_id": str(project_id)})
     except HTTPException:
         raise
     except Exception:
