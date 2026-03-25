@@ -86,7 +86,9 @@ def mock_dependencies(monkeypatch):
         generation.updated_at = datetime.now(timezone.utc)
         return generation
 
-    async def mock_create_generation(db, project_id, input_image_url, generation_in: GenerationCreate):
+    async def mock_create_generation(
+        db, project_id, input_image_url, generation_in: GenerationCreate
+    ):
         if project_id not in project_owners:
             raise RuntimeError("Missing project owner mapping")
         attempt = generation_in.attempt if generation_in.attempt is not None else 1
@@ -248,7 +250,9 @@ def test_retry_generation_creates_new_record(client, headers_a):
 def test_retry_rejects_completed(client, headers_a):
     """Retry should return 400 when the generation is completed."""
     # Arrange
-    original = _seed_generation(headers_a, status="completed", output_image_url="https://example.com/out.jpg")
+    original = _seed_generation(
+        headers_a, status="completed", output_image_url="https://example.com/out.jpg"
+    )
 
     # Act
     response = client.post(f"/v1/generations/{original.id}/retry", headers=headers_a)

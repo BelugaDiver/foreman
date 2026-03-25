@@ -37,9 +37,7 @@ async def create_upload_intent(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    intent = await storage.create_upload_url(
-        request.filename, request.content_type, project_id
-    )
+    intent = await storage.create_upload_url(request.filename, request.content_type, project_id)
 
     image_in = ImageCreate(
         project_id=project_id,

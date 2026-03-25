@@ -160,4 +160,5 @@ def _int_from_env(name: str, default: int) -> int:
         logger.warning("Invalid value '%s' for %s. Falling back to %s.", raw_value, name, default)
         return default
 
+
 __all__ = ["Database", "DatabaseSettings", "SQLStatement", "sql"]

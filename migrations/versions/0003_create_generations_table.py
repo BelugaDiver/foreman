@@ -37,7 +37,8 @@ def upgrade() -> None:
 
     CREATE INDEX IF NOT EXISTS ix_generations_project_id ON generations(project_id);
     CREATE INDEX IF NOT EXISTS ix_generations_parent_id ON generations(parent_id);
-    """ )
+    """)
+
 
 def downgrade() -> None:
     op.execute("DROP TABLE IF EXISTS generations CASCADE;")

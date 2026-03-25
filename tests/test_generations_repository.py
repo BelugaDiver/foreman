@@ -84,7 +84,9 @@ async def test_get_generation_by_id_scopes_by_owner() -> None:
     db.fetchrow = AsyncMock(return_value=_generation_record(generation_id, project_id))
 
     # Act
-    generation = await repo.get_generation_by_id(db=db, generation_id=generation_id, user_id=USER_A_ID)
+    generation = await repo.get_generation_by_id(
+        db=db, generation_id=generation_id, user_id=USER_A_ID
+    )
 
     # Assert
     assert generation is not None
@@ -104,7 +106,9 @@ async def test_get_generation_by_id_returns_none_when_not_owned_or_missing() -> 
     db.fetchrow = AsyncMock(return_value=None)
 
     # Act
-    generation = await repo.get_generation_by_id(db=db, generation_id=generation_id, user_id=USER_B_ID)
+    generation = await repo.get_generation_by_id(
+        db=db, generation_id=generation_id, user_id=USER_B_ID
+    )
 
     # Assert
     assert generation is None

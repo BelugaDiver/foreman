@@ -96,7 +96,9 @@ def mock_dependencies(monkeypatch):
             return None
         return generation
 
-    async def mock_create_generation(db, project_id, input_image_url, generation_in: GenerationCreate):
+    async def mock_create_generation(
+        db, project_id, input_image_url, generation_in: GenerationCreate
+    ):
         attempt = generation_in.attempt if generation_in.attempt is not None else 1
         generation = Generation(
             id=uuid.uuid4(),
@@ -126,7 +128,8 @@ def mock_dependencies(monkeypatch):
         rows = [
             generation
             for generation_id, generation in generations_db.items()
-            if generation.project_id == project_id and generation_owners.get(generation_id) == user_id
+            if generation.project_id == project_id
+            and generation_owners.get(generation_id) == user_id
         ]
         rows.sort(key=lambda row: row.created_at, reverse=True)
         return rows[offset : offset + limit]
