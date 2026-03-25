@@ -19,6 +19,9 @@ class CorrelationIdFilter(logging.Filter):
 
 def configure_logging() -> None:
     """Configure logging based on LOG_FORMAT environment variable."""
+    if logging.getLogger().handlers:
+        return
+
     use_json = os.getenv("LOG_FORMAT", "text").lower() == "json"
 
     root_logger = logging.getLogger()
