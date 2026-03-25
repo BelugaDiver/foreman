@@ -3,7 +3,7 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from foreman.api.deps import get_current_user, get_db
 from foreman.db import Database
@@ -55,7 +55,7 @@ async def get_generation(
 @router.patch("/{generation_id}", response_model=GenerationRead)
 async def update_generation(
     generation_id: uuid.UUID,
-    generation_in: GenerationUpdate,
+    generation_in: GenerationUpdate = Body(),
     current_user: User = Depends(get_current_user),
     db: Database = Depends(get_db),
 ):
