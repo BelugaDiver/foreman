@@ -1,6 +1,5 @@
 """Integration tests for user endpoints."""
 
-import pytest
 from fastapi.testclient import TestClient
 
 from tests.integration.conftest import create_user_via_api

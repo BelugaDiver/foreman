@@ -2,13 +2,12 @@
 
 import uuid
 
-import pytest
 from fastapi.testclient import TestClient
 
 from tests.integration.conftest import (
-    create_user_via_api,
-    create_project_via_api,
     create_generation_via_api,
+    create_project_via_api,
+    create_user_via_api,
 )
 
 

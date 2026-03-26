@@ -2,7 +2,6 @@
 
 import os
 import uuid
-from datetime import datetime, timezone
 
 # Disable DEV_MODE to prevent ensure_dev_user running at startup
 os.environ["DEV_MODE"] = "false"
@@ -60,7 +59,7 @@ async def db_pool(db_dsn):
     await pool.close()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 async def cleanup_tables(db_pool):
     """Truncate all tables after each test."""
     yield
@@ -73,10 +72,11 @@ async def cleanup_tables(db_pool):
 @pytest.fixture(scope="session")
 def app_with_test_db(db_pool):
     """Create FastAPI app with test database."""
-    from foreman.main import app
-    from foreman.api import deps
-    from foreman.db import Database, DatabaseSettings
     import asyncpg
+
+    from foreman.api import deps
+    from foreman.db import Database
+    from foreman.main import app
 
     # Create a Database wrapper that uses our test pool
     class TestDatabase(Database):
