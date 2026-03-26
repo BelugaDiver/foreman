@@ -44,7 +44,7 @@ async def create_upload_intent(
         "Creating upload intent",
         extra={
             "project_id": str(project_id),
-            "filename": request.filename,
+            "file_name": request.filename,
             "content_type": request.content_type,
         },
     )
@@ -178,7 +178,7 @@ async def delete_image(
                 "image_id": str(image_id),
                 "user_id": str(current_user.id),
                 "project_id": str(image.project_id),
-                "filename": image.filename,
+                "file_name": image.filename,
             },
         )
         raise HTTPException(status_code=500, detail="Internal server error") from exc

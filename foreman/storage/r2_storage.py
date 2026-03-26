@@ -43,7 +43,7 @@ class R2Storage(StorageProtocol):
         logger.debug(
             "Generating presigned upload URL",
             extra={
-                "filename": filename,
+                "file_name": filename,
                 "content_type": content_type,
                 "project_id": str(project_id),
             },

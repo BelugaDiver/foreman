@@ -23,14 +23,6 @@ def get_storage() -> StorageProtocol:
         storage = R2Storage(R2Settings.from_env())
         logger.info("Storage initialized", extra={"provider": provider})
         return storage
-    elif provider == "s3":
-        logger.error(
-            "S3 storage provider selected but S3Storage backend is not available",
-            extra={"provider": provider},
-        )
-        raise ValueError(
-            "STORAGE_PROVIDER 's3' is not supported: S3Storage backend is not available"
-        )
 
     raise ValueError(f"Unknown STORAGE_PROVIDER: {provider}")
 
