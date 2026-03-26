@@ -35,7 +35,19 @@ for idx, (key, value) in enumerate(update_data.items(), start=1):
 
 **Location:** `foreman/storage/r2_storage.py:24`
 
-**Fix:** Either mock the storage or make R2 initialization lazy/on-demand
+**Solution: Use LocalStack as R2/S3 emulator**
+
+Cloudflare R2 is S3-compatible. We can use **LocalStack** (local AWS emulator) to provide an S3-compatible endpoint that R2 clients can use locally.
+
+**Approach:**
+1. Add LocalStack container (runs alongside PostgreSQL)
+2. Configure R2 storage to use LocalStack endpoint
+3. LocalStack persists data locally in Docker volume
+
+**Benefits:**
+- No external dependencies (all local)
+- S3-compatible API works with boto3/R2 SDK
+- Can be extended to mock other AWS services if needed
 
 
 ### Category 3: Response Schema Validation (10 tests)
@@ -79,13 +91,48 @@ for idx, (key, value) in enumerate(update_data.items(), start=1):
         params.append(value)
 ```
 
-### Task 2: Fix R2 Storage Configuration
+### Task 2: Fix R2 Storage Configuration with LocalStack
 
 **Files:**
-- Modify: `foreman/storage/r2_storage.py`
-- Modify: `foreman/api/v1/endpoints/images.py`
+- Modify: `tests/integration/conftest.py`
+- Modify: `foreman/storage/r2_storage.py` or environment config
 
-**Approach:** Make R2 storage initialization lazy (on first use rather than at import time)
+**Steps:**
+
+1. **Add LocalStack to conftest.py:**
+```python
+@pytest.fixture(scope="session", autouse=True)
+def localstack_container():
+    """Start LocalStack container for S3/R2 emulation."""
+    from testcontainers.localstack import LocalStackContainer
+    
+    with LocalStackContainer(image="localstack/localstack:latest") as ls:
+        ls.with_services("s3")
+        ls.start()
+        
+        # Create test bucket
+        import boto3
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url="http://localhost:4566",
+            aws_access_key_id="test",
+            aws_secret_access_key="test",
+        )
+        s3_client.create_bucket(Bucket="test-bucket")
+        
+        yield ls
+```
+
+2. **Set environment variables for tests:**
+```python
+os.environ["R2_ACCESS_KEY_ID"] = "test"
+os.environ["R2_SECRET_ACCESS_KEY"] = "test"
+os.environ["R2_BUCKET_NAME"] = "test-bucket"
+# Point to LocalStack instead of real R2
+os.environ["R2_ENDPOINT_URL"] = "http://localhost:4566"
+```
+
+3. **Make R2 storage accept endpoint_url from environment** (if not already supported)
 
 ### Task 3: Fix Response Schema Validation
 
@@ -111,5 +158,5 @@ for idx, (key, value) in enumerate(update_data.items(), start=1):
 
 - [ ] All 43 integration tests pass
 - [ ] No 500 errors from JSON type issues
-- [ ] No R2 storage errors for image tests
+- [ ] No R2 storage errors for image tests (using LocalStack)
 - [ ] All response schemas validate correctly
