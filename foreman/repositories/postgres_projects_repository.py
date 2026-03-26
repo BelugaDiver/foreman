@@ -1,5 +1,6 @@
 """Database CRUD operations for the Project resource."""
 
+import json
 import uuid
 
 from foreman.db import Database, sql
@@ -105,8 +106,13 @@ async def update_project(
     params: list = []
 
     for idx, (key, value) in enumerate(update_data.items(), start=1):
-        set_clauses.append(f"{key}=${idx}")
-        params.append(value)
+        # JSONB columns in PostgreSQL require string values cast to jsonb
+        if key == "room_analysis" and isinstance(value, dict):
+            set_clauses.append(f"{key}=${idx}::jsonb")
+            params.append(json.dumps(value))
+        else:
+            set_clauses.append(f"{key}=${idx}")
+            params.append(value)
 
     # project_id and user_id are the final two parameters
     params.append(project_id)
@@ -125,7 +131,13 @@ async def update_project(
     record = await db.fetchrow(stmt)
     if not record:
         return None
-    return Project(**dict(record))
+
+    # Convert JSONB columns back to dict
+    record_dict = dict(record)
+    if "room_analysis" in record_dict and isinstance(record_dict["room_analysis"], str):
+        record_dict["room_analysis"] = json.loads(record_dict["room_analysis"])
+
+    return Project(**record_dict)
 
 
 async def delete_project(

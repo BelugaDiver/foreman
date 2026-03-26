@@ -1,5 +1,6 @@
 """Database CRUD operations for the Generation resource."""
 
+import json
 import uuid
 
 from foreman.db import Database, sql
@@ -14,6 +15,14 @@ logger = get_logger("foreman.repositories.generations")
 ALLOWED_UPDATE_FIELDS: frozenset[str] = frozenset(
     {"status", "output_image_url", "error_message", "processing_time_ms", "metadata"}
 )
+
+
+def _parse_generation_record(record: dict) -> Generation:
+    """Convert database record to Generation model, parsing JSON fields."""
+    record_dict = dict(record)
+    if "metadata" in record_dict and isinstance(record_dict.get("metadata"), str):
+        record_dict["metadata"] = json.loads(record_dict["metadata"])
+    return Generation(**record_dict)
 
 
 async def create_generation(
@@ -44,7 +53,7 @@ async def create_generation(
     record = await db.fetchrow(stmt)
     if not record:
         raise RuntimeError("Failed to create generation record")
-    return Generation(**dict(record))
+    return _parse_generation_record(record)
 
 
 async def get_generation_by_id(
@@ -69,7 +78,7 @@ async def get_generation_by_id(
     record = await db.fetchrow(stmt)
     if not record:
         return None
-    return Generation(**dict(record))
+    return _parse_generation_record(record)
 
 
 async def list_generations_by_project(
@@ -167,7 +176,7 @@ async def update_generation(
     record = await db.fetchrow(stmt)
     if not record:
         return None
-    return Generation(**dict(record))
+    return _parse_generation_record(record)
 
 
 async def delete_generation(
