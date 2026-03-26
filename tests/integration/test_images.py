@@ -6,8 +6,10 @@ import httpx
 import pytest
 
 from tests.integration.conftest import (
+    create_image_direct,
     create_project_via_api,
     create_user_via_api,
+    get_db_dsn,
 )
 
 
@@ -55,5 +57,11 @@ async def test_get_image_wrong_user(client: httpx.AsyncClient):
 
     project = await create_project_via_api(client, headers_a)
 
-    resp = await client.get(f"/v1/images/{project['id']}", headers=headers_b)
+    image = await create_image_direct(
+        get_db_dsn(),
+        uuid.UUID(project["id"]),
+        uuid.UUID(headers_a["X-User-ID"]),
+    )
+
+    resp = await client.get(f"/v1/images/{image['id']}", headers=headers_b)
     assert resp.status_code == 404

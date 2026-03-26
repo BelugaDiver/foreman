@@ -128,7 +128,7 @@ async def list_generations(
         offset,
     )
     records = await db.fetch(stmt)
-    return [Generation(**dict(record)) for record in records]
+    return [_parse_generation_record(record) for record in records]
 
 
 async def update_generation(

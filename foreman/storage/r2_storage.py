@@ -55,8 +55,7 @@ class R2Storage(StorageProtocol):
         content_type: str,
         project_id: uuid.UUID,
     ) -> UploadIntent:
-        if self._client is None:
-            raise ValueError("R2Storage is not configured. Set R2_* environment variables.")
+        self._ensure_client()
 
         logger.debug(
             "Generating presigned upload URL",
@@ -86,8 +85,7 @@ class R2Storage(StorageProtocol):
         )
 
     async def get_download_url(self, storage_key: str) -> str:
-        if self._client is None:
-            raise ValueError("R2Storage is not configured. Set R2_* environment variables.")
+        self._ensure_client()
 
         logger.debug("Generating presigned download URL", extra={"storage_key": storage_key})
         if self._settings.public_url:
@@ -101,8 +99,7 @@ class R2Storage(StorageProtocol):
         )
 
     async def delete(self, storage_key: str) -> bool:
-        if self._client is None:
-            raise ValueError("R2Storage is not configured. Set R2_* environment variables.")
+        self._ensure_client()
 
         logger.info("Deleting object from R2", extra={"storage_key": storage_key})
         try:

@@ -111,9 +111,9 @@ async def soft_delete_user(db: Database, user_id: uuid.UUID) -> bool:
     logger.info("Soft deleting user", extra={"user_id": str(user_id)})
     stmt = sql(
         """
-        UPDATE users 
-        SET is_deleted=TRUE, is_active=FALSE, updated_at=CURRENT_TIMESTAMP 
-        WHERE id=$1 AND is_deleted=FALSE 
+        UPDATE users
+        SET is_deleted=TRUE, is_active=FALSE, updated_at=CURRENT_TIMESTAMP
+        WHERE id=$1 AND is_deleted=FALSE
         RETURNING id
         """,
         user_id,

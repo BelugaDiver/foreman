@@ -7,10 +7,11 @@ import uuid
 # Disable DEV_MODE to prevent ensure_dev_user running at startup
 os.environ["DEV_MODE"] = "false"
 
-import pytest
-import httpx
-import asyncpg
 import asyncio
+
+import asyncpg
+import httpx
+import pytest
 from testcontainers.postgres import PostgresContainer
 
 logger = logging.getLogger(__name__)
@@ -107,17 +108,15 @@ def get_db_dsn():
 @pytest.fixture(autouse=True)
 async def cleanup_tables():
     """Truncate all tables before AND after each test for maximum isolation."""
-    import asyncio
 
     async def do_cleanup():
         for attempt in range(3):
             try:
                 conn = await asyncpg.connect(get_db_dsn())
                 try:
-                    await conn.execute("DELETE FROM generations")
-                    await conn.execute("DELETE FROM images")
-                    await conn.execute("DELETE FROM projects")
-                    await conn.execute("DELETE FROM users")
+                    await conn.execute(
+                        "TRUNCATE TABLE generations, images, projects, users, styles CASCADE"
+                    )
                     break
                 finally:
                     await conn.close()
@@ -263,3 +262,31 @@ async def create_image_via_api(
     if resp.status_code == 201:
         return resp.json()
     return None
+
+
+async def create_image_direct(
+    dsn: str, project_id: uuid.UUID, user_id: uuid.UUID, filename: str = "test.jpg"
+) -> dict:
+    """Create an image directly in the database. Returns the image dict."""
+    import asyncpg
+
+    conn = await asyncpg.connect(dsn)
+    try:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO images
+                (project_id, user_id, filename, content_type, size_bytes, storage_key, url)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING *
+            """,
+            project_id,
+            user_id,
+            filename,
+            "image/jpeg",
+            1024,
+            f"projects/{project_id}/test/{filename}",
+            f"https://example.com/{filename}",
+        )
+        return dict(row)
+    finally:
+        await conn.close()
