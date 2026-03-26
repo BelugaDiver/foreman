@@ -91,15 +91,29 @@ for idx, (key, value) in enumerate(update_data.items(), start=1):
         params.append(value)
 ```
 
+**Verification:** Run `test_update_project` - should return 200 instead of 500
+
+
 ### Task 2: Fix R2 Storage Configuration with LocalStack
 
-**Files:**
-- Modify: `tests/integration/conftest.py`
-- Modify: `foreman/storage/r2_storage.py` or environment config
+**Root Cause Analysis:**
 
-**Steps:**
+The error `ValueError: R2Settings is not configured` happens because:
+1. `foreman/storage/r2_storage.py` initializes R2 storage at module import time
+2. It reads `R2Settings` from environment variables immediately
+3. Without env vars, it raises `ValueError`
 
-1. **Add LocalStack to conftest.py:**
+**Solution: Two Options**
+
+#### Option A: Use LocalStack (Recommended)
+Add LocalStack container to provide S3 endpoint.
+
+#### Option B: Lazy Initialization (Simpler)
+Make R2 storage initialize lazily on first use, not at import time. This avoids the error for tests that don't need storage.
+
+**Steps for Option A:**
+
+1. **Add LocalStack container to conftest.py:**
 ```python
 @pytest.fixture(scope="session", autouse=True)
 def localstack_container():
@@ -110,7 +124,7 @@ def localstack_container():
         ls.with_services("s3")
         ls.start()
         
-        # Create test bucket
+        # Create test bucket using boto3
         import boto3
         s3_client = boto3.client(
             "s3",
@@ -118,33 +132,68 @@ def localstack_container():
             aws_access_key_id="test",
             aws_secret_access_key="test",
         )
-        s3_client.create_bucket(Bucket="test-bucket")
+        s3_client.create_bucket(Bucket="foreman-images")
         
-        yield ls
+        yield {"endpoint": "http://localhost:4566", "bucket": "foreman-images"}
 ```
 
-2. **Set environment variables for tests:**
+2. **Set environment variables before app import:**
 ```python
-os.environ["R2_ACCESS_KEY_ID"] = "test"
-os.environ["R2_SECRET_ACCESS_KEY"] = "test"
-os.environ["R2_BUCKET_NAME"] = "test-bucket"
-# Point to LocalStack instead of real R2
-os.environ["R2_ENDPOINT_URL"] = "http://localhost:4566"
+@pytest.fixture(scope="session", autouse=True)
+def setup_r2_env(localstack_container):
+    """Set R2 environment variables pointing to LocalStack."""
+    os.environ["R2_ACCESS_KEY_ID"] = "test"
+    os.environ["R2_SECRET_ACCESS_KEY"] = "test"
+    os.environ["R2_ACCOUNT_ID"] = "test-account"
+    os.environ["R2_BUCKET_NAME"] = localstack_container["bucket"]
+    # Need to check if R2 storage supports endpoint_url from env
 ```
 
-3. **Make R2 storage accept endpoint_url from environment** (if not already supported)
+**Steps for Option B (Simpler):**
+
+1. Modify `foreman/storage/r2_storage.py` to defer initialization:
+```python
+class R2Storage:
+    def __init__(self, settings: R2Settings):
+        self._settings = settings
+        self._client = None
+    
+    @property
+    def client(self):
+        if self._client is None:
+            # Initialize on first use, not at import time
+            self._client = boto3.client(...)
+        return self._client
+```
+
+This way, tests that don't actually upload images won't fail - only tests that need storage would need LocalStack.
+
 
 ### Task 3: Fix Response Schema Validation
 
-**Files:**
-- Review: `foreman/schemas/generation.py`
-- Review: `foreman/repositories/postgres_generations_repository.py`
-- Review: `foreman/api/v1/endpoints/generations.py`
+**Root Cause Analysis:**
+
+Error: `fastapi.exceptions.ResponseValidationError: 1 validation error: {'type': 'dict_type', 'loc': ('response', 'metadata'), 'msg': 'Input should be a valid dictionary', 'input': '{}'}`
+
+**Issue:** The `metadata` field in `GenerationRead` schema is defined as `dict[str, Any]` but the database returns an empty dict `{}`. In Pydantic v2, this type annotation may not properly validate as a dict type.
+
+**Location:** `foreman/schemas/generation.py:59`
+```python
+metadata: dict[str, Any]  # May need Optional[dict] or different typing
+```
+
+**Fix Options:**
+1. Change `metadata: dict[str, Any]` to `metadata: Optional[dict[str, Any]] = None`
+2. Add default value: `metadata: dict[str, Any] = Field(default_factory=dict)`
+3. Or check if the issue is that empty dict `{}` doesn't match `dict[str, Any]` without a default
 
 **Steps:**
-1. Check each field in `GenerationRead` schema
-2. Compare with fields returned from database query
-3. Fix any mismatches
+1. Modify `foreman/schemas/generation.py` to handle empty dict properly:
+```python
+# Option: make Optional with default
+metadata: Optional[dict[str, Any]] = None
+```
+
 
 ### Task 4: Fix Test Cleanup (if needed)
 
