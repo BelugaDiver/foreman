@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from foreman import __version__
-from foreman.api.v1.endpoints import generations, images, projects, users
+from foreman.api.v1.endpoints import generations, images, projects, styles, users
 from foreman.db import Database, DatabaseSettings
 from foreman.logging_config import configure_logging
 from foreman.middleware.request_logging import RequestLoggingMiddleware
@@ -82,6 +82,7 @@ app.include_router(users.router, prefix="/v1/users", tags=["users"])
 app.include_router(projects.router, prefix="/v1/projects", tags=["projects"])
 app.include_router(generations.router, prefix="/v1/generations", tags=["generations"])
 app.include_router(images.router, prefix="/v1", tags=["images"])
+app.include_router(styles.router, prefix="/v1/styles", tags=["styles"])
 
 
 @app.get("/", response_model=HealthCheck)
