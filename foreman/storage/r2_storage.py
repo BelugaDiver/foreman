@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import anyio
 import boto3
 from botocore.config import Config
 
@@ -80,5 +81,16 @@ class R2Storage(StorageProtocol):
 
     async def delete(self, storage_key: str) -> bool:
         logger.info("Deleting object from R2", extra={"storage_key": storage_key})
-        self._client.delete_object(Bucket=self._bucket, Key=storage_key)
-        return True
+        try:
+            await anyio.to_thread.run_sync(
+                self._client.delete_object,
+                Bucket=self._bucket,
+                Key=storage_key,
+            )
+            return True
+        except Exception as e:
+            logger.error(
+                "Failed to delete object from R2",
+                extra={"storage_key": storage_key, "error": str(e)},
+            )
+            return False

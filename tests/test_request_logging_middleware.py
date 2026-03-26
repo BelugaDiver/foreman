@@ -1,11 +1,10 @@
 """Tests for HTTP request logging middleware."""
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-from starlette.requests import Request
-from starlette.responses import Response
-from starlette.testclient import TestClient
 from fastapi import FastAPI
+from starlette.testclient import TestClient
 
 from foreman.middleware.request_logging import RequestLoggingMiddleware
 

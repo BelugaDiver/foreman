@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import os
+from functools import lru_cache
 
 from foreman.logging_config import get_logger
 from foreman.storage.protocol import StorageProtocol
 from foreman.storage.r2_storage import R2Storage
-from foreman.storage.settings import R2Settings, S3Settings
+from foreman.storage.settings import R2Settings
 
 logger = get_logger("foreman.storage")
 
 
+@lru_cache(maxsize=1)
 def get_storage() -> StorageProtocol:
     """Create a storage backend based on STORAGE_PROVIDER env var."""
     provider = os.getenv("STORAGE_PROVIDER", "r2").lower()
@@ -22,11 +24,13 @@ def get_storage() -> StorageProtocol:
         logger.info("Storage initialized", extra={"provider": provider})
         return storage
     elif provider == "s3":
-        from foreman.storage.s3_storage import S3Storage
-
-        storage = S3Storage(S3Settings.from_env())
-        logger.info("Storage initialized", extra={"provider": provider})
-        return storage
+        logger.error(
+            "S3 storage provider selected but S3Storage backend is not available",
+            extra={"provider": provider},
+        )
+        raise ValueError(
+            "STORAGE_PROVIDER 's3' is not supported: S3Storage backend is not available"
+        )
 
     raise ValueError(f"Unknown STORAGE_PROVIDER: {provider}")
 
