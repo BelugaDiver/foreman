@@ -4,7 +4,7 @@ import logging
 import os
 import sys
 
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger.json import JsonFormatter
 
 
 class CorrelationIdFilter(logging.Filter):
@@ -25,7 +25,7 @@ def configure_logging() -> None:
     root_logger.setLevel(logging.INFO)
 
     if use_json:
-        formatter = jsonlogger.JsonFormatter(
+        formatter = JsonFormatter(
             "%(asctime)s %(name)s %(levelname)s %(message)s %(correlation_id)s",
             datefmt="%Y-%m-%dT%H:%M:%S",
         )
