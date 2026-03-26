@@ -63,7 +63,9 @@ async def create_project(
     project_in: ProjectCreate,
 ) -> Project:
     """Insert a new project row and return it."""
-    logger.info("Creating project", extra={"user_id": str(user_id), "name": project_in.name})
+    logger.info(
+        "Creating project", extra={"user_id": str(user_id), "project_name": project_in.name}
+    )
     stmt = sql(
         """
         INSERT INTO projects (user_id, name, original_image_url)
