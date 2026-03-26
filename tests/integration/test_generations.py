@@ -159,5 +159,6 @@ async def test_retry_generation(client: httpx.AsyncClient):
     resp = await client.post(f"/v1/generations/{generation['id']}/retry", headers=headers)
     assert resp.status_code == 201
     data = resp.json()
-    assert data["parent_id"] == generation["id"]
+    # Retry preserves original parent (should be None for a new generation)
+    assert data["parent_id"] is None
     assert data["attempt"] == 2
