@@ -52,5 +52,6 @@ def configure_logging() -> None:
 def get_logger(name: str) -> logging.Logger:
     """Get a logger instance with correlation ID filter."""
     logger = logging.getLogger(name)
-    logger.addFilter(CorrelationIdFilter())
+    if not any(isinstance(f, CorrelationIdFilter) for f in logger.filters):
+        logger.addFilter(CorrelationIdFilter())
     return logger
