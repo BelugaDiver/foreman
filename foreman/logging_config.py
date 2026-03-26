@@ -1,10 +1,8 @@
 """Centralized logging configuration for Foreman."""
 
 import logging
-import os
-import sys
 
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger.json import JsonFormatter
 
 
 class CorrelationIdFilter(logging.Filter):
@@ -19,30 +17,28 @@ class CorrelationIdFilter(logging.Filter):
 
 def configure_logging() -> None:
     """Configure logging based on LOG_FORMAT environment variable."""
-    if logging.getLogger().handlers:
-        return
-
-    use_json = os.getenv("LOG_FORMAT", "text").lower() == "json"
-
     root_logger = logging.getLogger()
+
+    json_formatter = JsonFormatter(
+        fmt="%(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S%z",
+    )
+
+    # Configure existing handlers without duplicates
+    for handler in root_logger.handlers:
+        if not any(isinstance(f, CorrelationIdFilter) for f in handler.filters):
+            handler.addFilter(CorrelationIdFilter())
+        if handler.formatter is None:
+            handler.setFormatter(json_formatter)
+
+    # Ensure root logger has at least one handler with our config
+    if not root_logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(json_formatter)
+        handler.addFilter(CorrelationIdFilter())
+        root_logger.addHandler(handler)
+
     root_logger.setLevel(logging.INFO)
-    root_logger.addFilter(CorrelationIdFilter())
-
-    if use_json:
-        formatter = jsonlogger.JsonFormatter(
-            "%(asctime)s %(name)s %(levelname)s %(message)s %(correlation_id)s",
-            datefmt="%Y-%m-%dT%H:%M:%S",
-        )
-    else:
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s [cid:%(correlation_id)s]",
-        )
-
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(formatter)
-
-    root_logger.handlers.clear()
-    root_logger.addHandler(handler)
 
     logging.getLogger("foreman").setLevel(logging.INFO)
     logging.getLogger("foreman.http").setLevel(logging.INFO)
