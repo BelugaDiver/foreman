@@ -1,18 +1,19 @@
 """Generation management endpoints."""
 
-import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from foreman.api.deps import get_current_user, get_db
+from foreman.audit import AuditEvent, log_audit
 from foreman.db import Database
+from foreman.logging_config import get_logger
 from foreman.models.user import User
 from foreman.repositories import postgres_generations_repository as repo
 from foreman.schemas.generation import GenerationCreate, GenerationRead, GenerationUpdate
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = get_logger("foreman.endpoints.generations")
 
 
 @router.get("/", response_model=list[GenerationRead])
@@ -55,7 +56,7 @@ async def get_generation(
 @router.patch("/{generation_id}", response_model=GenerationRead)
 async def update_generation(
     generation_id: uuid.UUID,
-    generation_in: GenerationUpdate,
+    generation_in: GenerationUpdate = Body(),
     current_user: User = Depends(get_current_user),
     db: Database = Depends(get_db),
 ):
@@ -92,6 +93,13 @@ async def delete_generation(
         )
         if not success:
             raise HTTPException(status_code=404, detail="Generation not found")
+        log_audit(
+            AuditEvent.GENERATION_DELETED,
+            str(current_user.id),
+            resource_id=str(generation_id),
+            resource_type="generation",
+        )
+        logger.info("Generation deleted", extra={"generation_id": str(generation_id)})
     except HTTPException:
         raise
     except Exception:
@@ -128,6 +136,13 @@ async def cancel_generation(
         )
         if not updated:
             raise HTTPException(status_code=404, detail="Generation not found")
+        log_audit(
+            AuditEvent.GENERATION_CANCELLED,
+            str(current_user.id),
+            resource_id=str(generation_id),
+            resource_type="generation",
+        )
+        logger.info("Generation cancelled", extra={"generation_id": str(generation_id)})
         return updated
     except HTTPException:
         raise
@@ -164,12 +179,23 @@ async def retry_generation(
             model_used=original.model_used,
             attempt=original.attempt + 1,
         )
-        return await repo.create_generation(
+        generation = await repo.create_generation(
             db=db,
             project_id=original.project_id,
             input_image_url=original.input_image_url,
             generation_in=generation_in,
         )
+        log_audit(
+            AuditEvent.GENERATION_RETRY,
+            str(current_user.id),
+            resource_id=str(generation_id),
+            resource_type="generation",
+        )
+        logger.info(
+            "Generation retried",
+            extra={"generation_id": str(generation_id), "attempt": generation.attempt},
+        )
+        return generation
     except HTTPException:
         raise
     except Exception:
@@ -204,12 +230,23 @@ async def fork_generation(
             parent_id=parent.id,
             model_used=parent.model_used,
         )
-        return await repo.create_generation(
+        new_generation = await repo.create_generation(
             db=db,
             project_id=parent.project_id,
             input_image_url=parent.output_image_url,
             generation_in=generation_in,
         )
+        log_audit(
+            AuditEvent.GENERATION_FORK,
+            str(current_user.id),
+            resource_id=str(new_generation.id),
+            resource_type="generation",
+        )
+        logger.info(
+            "Generation forked",
+            extra={"original_id": str(generation_id), "new_id": str(new_generation.id)},
+        )
+        return new_generation
     except HTTPException:
         raise
     except Exception:

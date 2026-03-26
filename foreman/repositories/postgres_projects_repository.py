@@ -3,8 +3,11 @@
 import uuid
 
 from foreman.db import Database, sql
+from foreman.logging_config import get_logger
 from foreman.models.project import Project
 from foreman.schemas.project import ProjectCreate, ProjectUpdate
+
+logger = get_logger("foreman.repositories.projects")
 
 # Fields callers are permitted to update. Guards against column-name injection
 # in the dynamically built UPDATE query.
@@ -18,6 +21,9 @@ async def list_projects(
     offset: int = 0,
 ) -> list[Project]:
     """Return a paginated list of projects owned by *user_id*."""
+    logger.debug(
+        "Listing projects", extra={"user_id": str(user_id), "limit": limit, "offset": offset}
+    )
     stmt = sql(
         """
         SELECT * FROM projects
@@ -39,6 +45,7 @@ async def get_project_by_id(
     user_id: uuid.UUID,
 ) -> Project | None:
     """Retrieve a single project by ID scoped to the owning user."""
+    logger.debug("Fetching project", extra={"project_id": str(project_id), "user_id": str(user_id)})
     stmt = sql(
         "SELECT * FROM projects WHERE id=$1 AND user_id=$2",
         project_id,
@@ -56,6 +63,7 @@ async def create_project(
     project_in: ProjectCreate,
 ) -> Project:
     """Insert a new project row and return it."""
+    logger.info("Creating project", extra={"user_id": str(user_id), "name": project_in.name})
     stmt = sql(
         """
         INSERT INTO projects (user_id, name, original_image_url)
@@ -88,6 +96,8 @@ async def update_project(
     if not update_data:
         # Nothing to change — return current state
         return await get_project_by_id(db, project_id, user_id)
+
+    logger.debug("Updating project", extra={"project_id": str(project_id)})
 
     set_clauses: list[str] = []
     params: list = []
@@ -122,6 +132,7 @@ async def delete_project(
     user_id: uuid.UUID,
 ) -> bool:
     """Hard-delete a project row. Returns True if a row was deleted."""
+    logger.info("Deleting project", extra={"project_id": str(project_id)})
     stmt = sql(
         "DELETE FROM projects WHERE id=$1 AND user_id=$2 RETURNING id",
         project_id,

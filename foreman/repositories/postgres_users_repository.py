@@ -3,8 +3,11 @@
 import uuid
 
 from foreman.db import Database, sql
+from foreman.logging_config import get_logger
 from foreman.models.user import User
 from foreman.schemas.user import UserCreate, UserUpdate
+
+logger = get_logger("foreman.repositories.users")
 
 # Fields that callers are permitted to update. Filtering against this set
 # prevents unknown column names from being interpolated into the UPDATE query.
@@ -13,6 +16,7 @@ ALLOWED_UPDATE_FIELDS: frozenset[str] = frozenset({"email", "full_name"})
 
 async def get_user_by_id(db: Database, user_id: uuid.UUID) -> User | None:
     """Retrieve an active user from the database."""
+    logger.debug("Fetching user by ID", extra={"user_id": str(user_id)})
     stmt = sql("SELECT * FROM users WHERE id=$1 AND is_deleted=FALSE", user_id)
     record = await db.fetchrow(stmt)
     if not record:
@@ -50,6 +54,7 @@ async def ensure_dev_user(db: Database) -> User:
 
 async def create_user(db: Database, user_in: UserCreate) -> User:
     """Create a new user in the database."""
+    logger.info("Creating user", extra={"email": user_in.email})
     stmt = sql(
         """
         INSERT INTO users (email, full_name)
@@ -74,6 +79,8 @@ async def update_user(db: Database, user_id: uuid.UUID, user_in: UserUpdate) -> 
     }
     if not update_data:
         return await get_user_by_id(db, user_id)
+
+    logger.debug("Updating user", extra={"user_id": str(user_id)})
 
     set_clauses = []
     params = []
@@ -101,6 +108,7 @@ async def update_user(db: Database, user_id: uuid.UUID, user_in: UserUpdate) -> 
 
 async def soft_delete_user(db: Database, user_id: uuid.UUID) -> bool:
     """Soft delete user marking them inactive and deleted."""
+    logger.info("Soft deleting user", extra={"user_id": str(user_id)})
     stmt = sql(
         """
         UPDATE users 

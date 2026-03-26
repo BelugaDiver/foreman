@@ -94,11 +94,10 @@ def mock_dependencies(monkeypatch):
 
     async def mock_list_generations(db, user_id, limit=20, offset=0):
         user_generations = [
-            g for g_id, g in generations_db.items()
-            if generation_owners.get(g_id) == user_id
+            g for g_id, g in generations_db.items() if generation_owners.get(g_id) == user_id
         ]
         user_generations.sort(key=lambda x: x.created_at, reverse=True)
-        return user_generations[offset:offset + limit]
+        return user_generations[offset : offset + limit]
 
     async def mock_update_generation(db, generation_id, user_id, generation_in):
         generation = generations_db.get(generation_id)
@@ -439,6 +438,7 @@ def test_update_generation_extra_fields_returns_422(client, headers_a):
 
 def test_list_generations_internal_error_returns_500(client, headers_a, monkeypatch):
     """GET /v1/generations returns 500 on unexpected repository errors."""
+
     # Arrange
     async def mock_error(*args, **kwargs):
         raise Exception("DB outage")

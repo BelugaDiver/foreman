@@ -3,8 +3,11 @@
 import uuid
 
 from foreman.db import Database, sql
+from foreman.logging_config import get_logger
 from foreman.models.generation import Generation
 from foreman.schemas.generation import GenerationCreate, GenerationUpdate
+
+logger = get_logger("foreman.repositories.generations")
 
 # Fields callers are permitted to update. Guards against column-name injection
 # in the dynamically built UPDATE query.
@@ -20,6 +23,7 @@ async def create_generation(
     generation_in: GenerationCreate,
 ) -> Generation:
     """Insert a new generation row and return it."""
+    logger.info("Creating generation", extra={"project_id": str(project_id)})
     attempt = generation_in.attempt if generation_in.attempt is not None else 1
     stmt = sql(
         """
@@ -49,6 +53,9 @@ async def get_generation_by_id(
     user_id: uuid.UUID,
 ) -> Generation | None:
     """Retrieve a generation by ID, scoped to the owning user."""
+    logger.debug(
+        "Fetching generation", extra={"generation_id": str(generation_id), "user_id": str(user_id)}
+    )
     stmt = sql(
         """
         SELECT g.*
@@ -131,6 +138,8 @@ async def update_generation(
     if not update_data:
         return await get_generation_by_id(db, generation_id, user_id)
 
+    logger.debug("Updating generation", extra={"generation_id": str(generation_id)})
+
     set_clauses: list[str] = []
     params: list = []
 
@@ -167,6 +176,7 @@ async def delete_generation(
     user_id: uuid.UUID,
 ) -> bool:
     """Hard-delete a generation row. Returns True if a row was deleted."""
+    logger.info("Deleting generation", extra={"generation_id": str(generation_id)})
     stmt = sql(
         """
         DELETE FROM generations AS g
