@@ -104,21 +104,36 @@ def get_db_dsn():
     return dsn
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 async def cleanup_tables():
-    """Truncate all tables after each test."""
+    """Truncate all tables before AND after each test for maximum isolation."""
+    import asyncio
+
+    async def do_cleanup():
+        for attempt in range(3):
+            try:
+                conn = await asyncpg.connect(get_db_dsn())
+                try:
+                    await conn.execute("DELETE FROM generations")
+                    await conn.execute("DELETE FROM images")
+                    await conn.execute("DELETE FROM projects")
+                    await conn.execute("DELETE FROM users")
+                    break
+                finally:
+                    await conn.close()
+            except Exception as e:
+                if attempt == 2:
+                    logger.warning(f"Error in cleanup: {e}")
+                else:
+                    await asyncio.sleep(0.1)
+
+    # Clean before test
+    await do_cleanup()
+
     yield
 
-    # Use a fresh connection for cleanup
-    try:
-        conn = await asyncpg.connect(get_db_dsn())
-        try:
-            for table in TABLES_TO_TRUNCATE:
-                await conn.execute(f"TRUNCATE TABLE {table} CASCADE")
-        finally:
-            await conn.close()
-    except Exception as e:
-        logger.warning(f"Error truncating tables: {e}")
+    # Clean after test
+    await do_cleanup()
 
 
 @pytest.fixture

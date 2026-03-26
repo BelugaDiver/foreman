@@ -104,7 +104,7 @@ async def list_generations_by_project(
         offset,
     )
     records = await db.fetch(stmt)
-    return [Generation(**dict(record)) for record in records]
+    return [_parse_generation_record(record) for record in records]
 
 
 async def list_generations(

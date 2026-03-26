@@ -175,7 +175,7 @@ async def retry_generation(
         generation_in = GenerationCreate(
             prompt=original.prompt,
             style_id=original.style_id,
-            parent_id=original.parent_id,
+            parent_id=generation_id,  # Set parent to original generation's ID
             model_used=original.model_used,
             attempt=original.attempt + 1,
         )
