@@ -28,6 +28,7 @@ dev = [
     "ruff>=0.15.2",
     "alembic>=1.18.4",
     "psycopg2-binary>=2.9.11",
+    "testcontainers>=4.0.0",
 ]
 
 [build-system]
