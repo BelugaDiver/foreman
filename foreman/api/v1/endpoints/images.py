@@ -63,6 +63,14 @@ async def create_upload_intent(
     try:
         image = await crud.create_image(db, image_in, url=None)
     except Exception:
+        logger.exception(
+            "Failed to create image record during upload intent",
+            extra={
+                "project_id": str(project_id),
+                "user_id": str(current_user.id),
+                "filename": request.filename,
+            },
+        )
         raise HTTPException(status_code=500, detail="Internal server error")
 
     logger.info(
@@ -163,8 +171,15 @@ async def delete_image(
 
     try:
         await crud.delete_image(db, image_id, current_user.id)
-    except Exception:
-        raise HTTPException(status_code=500, detail="Internal server error")
+    except Exception as exc:
+        logger.exception(
+            "Database delete failed for image",
+            extra={
+                "image_id": str(image_id),
+                "user_id": str(current_user.id),
+            },
+        )
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
     log_audit(
         AuditEvent.IMAGE_DELETED,
