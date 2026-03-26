@@ -56,7 +56,7 @@ def setup_postgres():
 
     logger.info("Starting PostgreSQL testcontainer...")
     try:
-        _postgres_container = PostgresContainer("postgres:16-alpine")
+        _postgres_container = PostgresContainer("postgres:18-alpine")
         _postgres_container.start()
         connection_url = _postgres_container.get_connection_url()
         host = connection_url.split("@")[1] if "@" in connection_url else "local"
