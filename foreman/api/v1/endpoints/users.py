@@ -1,7 +1,7 @@
 """User management endpoints."""
 
 from asyncpg.exceptions import UniqueViolationError
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 
 from foreman.api.deps import get_current_user, get_db
 from foreman.audit import AuditEvent, log_audit
@@ -17,7 +17,7 @@ logger = get_logger("foreman.endpoints.users")
 
 @router.post("/", response_model=UserRead, status_code=201)
 async def create_user(
-    user_in: UserCreate,
+    user_in: UserCreate = Body(...),
     db: Database = Depends(get_db),
 ):
     """Register a new user."""
@@ -42,7 +42,7 @@ async def read_user_me(
 
 @router.patch("/me", response_model=UserRead)
 async def update_user_me(
-    user_in: UserUpdate,
+    user_in: UserUpdate = Body(...),
     current_user: User = Depends(get_current_user),
     db: Database = Depends(get_db),
 ):

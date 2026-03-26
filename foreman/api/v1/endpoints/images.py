@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from foreman.api.deps import get_current_user, get_db
 from foreman.audit import AuditEvent, log_audit
@@ -30,7 +30,7 @@ async def get_storage() -> StorageProtocol:
 )
 async def create_upload_intent(
     project_id: uuid.UUID,
-    request: ImageUploadRequest,
+    request: ImageUploadRequest = Body(...),
     db: Database = Depends(get_db),
     current_user: User = Depends(get_current_user),
     storage: StorageProtocol = Depends(get_storage),
