@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
 
 from foreman.api.deps import get_current_user, get_db
 from foreman.audit import AuditEvent, log_audit
@@ -35,7 +35,7 @@ async def list_projects(
 
 @router.post("/", response_model=ProjectRead, status_code=201)
 async def create_project(
-    project_in: ProjectCreate,
+    project_in: ProjectCreate = Body(...),
     current_user: User = Depends(get_current_user),
     db: Database = Depends(get_db),
 ):
@@ -145,7 +145,7 @@ async def list_project_generations(
 @router.patch("/{project_id}", response_model=ProjectRead)
 async def update_project(
     project_id: uuid.UUID,
-    project_in: ProjectUpdate,
+    project_in: ProjectUpdate = Body(...),
     current_user: User = Depends(get_current_user),
     db: Database = Depends(get_db),
 ):
