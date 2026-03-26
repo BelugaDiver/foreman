@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
@@ -23,19 +23,21 @@ class ImageCreate(BaseModel):
 class ImageUploadRequest(BaseModel):
     """Schema for requesting an upload intent."""
 
-    filename: str
-    content_type: str
-    size_bytes: int
+    filename: str = Field(..., min_length=1)
+    content_type: str = Field(..., pattern=r"^image/(jpeg|png|gif|webp)$")
+    size_bytes: int = Field(..., gt=0)
 
     model_config = ConfigDict(extra="forbid")
 
     @field_validator("filename")
     @classmethod
-    def filename_not_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("filename cannot be empty")
+    def filename_no_path_separators(cls, v: str) -> str:
+        if not v:
+            raise ValueError("Filename cannot be empty")
+        if "/" in v or "\\" in v:
+            raise ValueError("Filename cannot contain path separators")
         if ".." in v:
-            raise ValueError("filename cannot contain path traversal")
+            raise ValueError("Filename cannot contain '..'")
         return v
 
     @field_validator("content_type")
