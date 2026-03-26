@@ -177,6 +177,8 @@ async def delete_image(
             extra={
                 "image_id": str(image_id),
                 "user_id": str(current_user.id),
+                "project_id": str(image.project_id),
+                "filename": image.filename,
             },
         )
         raise HTTPException(status_code=500, detail="Internal server error") from exc
