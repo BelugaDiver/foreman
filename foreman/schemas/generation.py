@@ -56,7 +56,7 @@ class GenerationRead(BaseModel):
     error_message: Optional[str]
     processing_time_ms: Optional[int]
     attempt: int
-    metadata: dict[str, Any]
+    metadata: Optional[dict[str, Any]] = None
     created_at: datetime
     updated_at: Optional[datetime]
 

@@ -1,5 +1,6 @@
 """Database CRUD operations for the Project resource."""
 
+import json
 import uuid
 
 from foreman.db import Database, sql
@@ -9,9 +10,15 @@ from foreman.schemas.project import ProjectCreate, ProjectUpdate
 
 logger = get_logger("foreman.repositories.projects")
 
-# Fields callers are permitted to update. Guards against column-name injection
-# in the dynamically built UPDATE query.
 ALLOWED_UPDATE_FIELDS: frozenset[str] = frozenset({"name", "original_image_url", "room_analysis"})
+
+
+def _parse_project_record(record: dict) -> Project:
+    """Convert database record to Project model, parsing JSON fields."""
+    record_dict = dict(record)
+    if "room_analysis" in record_dict and isinstance(record_dict.get("room_analysis"), str):
+        record_dict["room_analysis"] = json.loads(record_dict["room_analysis"])
+    return Project(**record_dict)
 
 
 async def list_projects(
@@ -36,7 +43,7 @@ async def list_projects(
         offset,
     )
     records = await db.fetch(stmt)
-    return [Project(**dict(r)) for r in records]
+    return [_parse_project_record(r) for r in records]
 
 
 async def get_project_by_id(
@@ -54,7 +61,7 @@ async def get_project_by_id(
     record = await db.fetchrow(stmt)
     if not record:
         return None
-    return Project(**dict(record))
+    return _parse_project_record(record)
 
 
 async def create_project(
@@ -63,7 +70,9 @@ async def create_project(
     project_in: ProjectCreate,
 ) -> Project:
     """Insert a new project row and return it."""
-    logger.info("Creating project", extra={"user_id": str(user_id), "name": project_in.name})
+    logger.info(
+        "Creating project", extra={"user_id": str(user_id), "project_name": project_in.name}
+    )
     stmt = sql(
         """
         INSERT INTO projects (user_id, name, original_image_url)
@@ -77,7 +86,7 @@ async def create_project(
     record = await db.fetchrow(stmt)
     if not record:
         raise RuntimeError("Failed to create project record")
-    return Project(**dict(record))
+    return _parse_project_record(record)
 
 
 async def update_project(
@@ -103,8 +112,13 @@ async def update_project(
     params: list = []
 
     for idx, (key, value) in enumerate(update_data.items(), start=1):
-        set_clauses.append(f"{key}=${idx}")
-        params.append(value)
+        # JSONB columns in PostgreSQL require string values cast to jsonb
+        if key == "room_analysis" and isinstance(value, dict):
+            set_clauses.append(f"{key}=${idx}::jsonb")
+            params.append(json.dumps(value))
+        else:
+            set_clauses.append(f"{key}=${idx}")
+            params.append(value)
 
     # project_id and user_id are the final two parameters
     params.append(project_id)
@@ -123,7 +137,8 @@ async def update_project(
     record = await db.fetchrow(stmt)
     if not record:
         return None
-    return Project(**dict(record))
+
+    return _parse_project_record(record)
 
 
 async def delete_project(

@@ -1,6 +1,5 @@
 """Tests for audit logging."""
 
-import pytest
 from unittest.mock import patch
 
 from foreman.audit import AuditEvent, log_audit

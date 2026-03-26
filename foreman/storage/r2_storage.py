@@ -20,19 +20,34 @@ class R2Storage(StorageProtocol):
     """Cloudflare R2 storage using S3-compatible API."""
 
     def __init__(self, settings: R2Settings) -> None:
-        if not settings.is_configured:
-            raise ValueError("R2Settings is not configured")
-
         self._settings = settings
-        self._client = boto3.client(
-            "s3",
-            endpoint_url=settings.endpoint,
-            aws_access_key_id=settings.access_key_id,
-            aws_secret_access_key=settings.secret_access_key,
-            config=Config(signature_version="s3v4"),
-        )
-        self._bucket = settings.bucket
-        logger.info("R2 Storage initialized", extra={"bucket": self._bucket})
+        self._client = None
+        self._bucket = settings.bucket if settings.is_configured else None
+
+        if settings.is_configured:
+            self._client = boto3.client(
+                "s3",
+                endpoint_url=settings.endpoint,
+                aws_access_key_id=settings.access_key_id,
+                aws_secret_access_key=settings.secret_access_key,
+                config=Config(signature_version="s3v4"),
+            )
+            logger.info("R2 Storage initialized", extra={"bucket": self._bucket})
+        else:
+            logger.warning("R2 Storage not configured - operations will fail if attempted")
+
+    def _ensure_client(self):
+        """Lazily initialize the boto3 client if needed."""
+        if self._client is None:
+            if not self._settings.is_configured:
+                raise ValueError("R2Storage is not configured. Set R2_* environment variables.")
+            self._client = boto3.client(
+                "s3",
+                endpoint_url=self._settings.endpoint,
+                aws_access_key_id=self._settings.access_key_id,
+                aws_secret_access_key=self._settings.secret_access_key,
+                config=Config(signature_version="s3v4"),
+            )
 
     async def create_upload_url(
         self,
@@ -40,6 +55,8 @@ class R2Storage(StorageProtocol):
         content_type: str,
         project_id: uuid.UUID,
     ) -> UploadIntent:
+        self._ensure_client()
+
         logger.debug(
             "Generating presigned upload URL",
             extra={
@@ -68,6 +85,8 @@ class R2Storage(StorageProtocol):
         )
 
     async def get_download_url(self, storage_key: str) -> str:
+        self._ensure_client()
+
         logger.debug("Generating presigned download URL", extra={"storage_key": storage_key})
         if self._settings.public_url:
             return f"{self._settings.public_url}/{storage_key}"
@@ -80,6 +99,8 @@ class R2Storage(StorageProtocol):
         )
 
     async def delete(self, storage_key: str) -> bool:
+        self._ensure_client()
+
         logger.info("Deleting object from R2", extra={"storage_key": storage_key})
         try:
             await anyio.to_thread.run_sync(

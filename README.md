@@ -65,8 +65,30 @@ uvicorn foreman.main:app --reload
 ### Run Tests
 
 ```bash
-pytest
+# Run unit tests (fast, no external dependencies)
+pytest tests/ --ignore=tests/integration/
+
+# Run integration tests (requires Docker)
+pytest tests/integration/
 ```
+
+### Integration Tests
+
+Integration tests use [testcontainers](https://testcontainers.com/) to spin up a real PostgreSQL database. Each test is isolated via table truncation.
+
+**Requirements:**
+- Docker must be running
+- At least 2GB RAM available
+
+**Run:**
+```bash
+pytest tests/integration/ -v
+```
+
+**What they test:**
+- All API endpoints against real PostgreSQL
+- Database constraints and transactions
+- Cross-resource operations (user → project → generation chain)
 
 ### Lint & Format
 
