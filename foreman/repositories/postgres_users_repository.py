@@ -3,6 +3,7 @@
 import uuid
 
 from foreman.db import Database, sql
+from foreman.exceptions import DuplicateResourceError
 from foreman.logging_config import get_logger
 from foreman.models.user import User
 from foreman.schemas.user import UserCreate, UserUpdate
@@ -55,16 +56,21 @@ async def ensure_dev_user(db: Database) -> User:
 async def create_user(db: Database, user_in: UserCreate) -> User:
     """Create a new user in the database."""
     logger.info("Creating user", extra={"email": user_in.email})
-    stmt = sql(
-        """
-        INSERT INTO users (email, full_name)
-        VALUES ($1, $2)
-        RETURNING *
-        """,
-        user_in.email,
-        user_in.full_name,
-    )
-    record = await db.fetchrow(stmt)
+    try:
+        stmt = sql(
+            """
+            INSERT INTO users (email, full_name)
+            VALUES ($1, $2)
+            RETURNING *
+            """,
+            user_in.email,
+            user_in.full_name,
+        )
+        record = await db.fetchrow(stmt)
+    except Exception as e:
+        if "23505" in str(e):
+            raise DuplicateResourceError("User", "email", user_in.email)
+        raise
     if not record:
         raise RuntimeError("Failed to create user record")
     return User(**dict(record))
