@@ -6,6 +6,7 @@ import os
 from contextlib import asynccontextmanager
 
 from asyncpg import ConnectionFailureError, QueryCanceledError
+from botocore.exceptions import ClientError, EndpointConnectionError
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -115,9 +116,22 @@ async def timeout_error_handler(request: Request, exc: Exception):
     )
 
 
+async def storage_error_handler(request: Request, exc: Exception):
+    error_logger.exception(
+        "Storage operation failed",
+        extra={"url": str(request.url), "method": request.method, "error_type": type(exc).__name__},
+    )
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Storage service temporarily unavailable"},
+    )
+
+
 app.add_exception_handler(ConnectionFailureError, connection_failure_handler)
 app.add_exception_handler(QueryCanceledError, query_canceled_handler)
 app.add_exception_handler(asyncio.TimeoutError, timeout_error_handler)
+app.add_exception_handler(ClientError, storage_error_handler)
+app.add_exception_handler(EndpointConnectionError, storage_error_handler)
 
 # Include API routers
 app.include_router(users.router, prefix="/v1/users", tags=["users"])
