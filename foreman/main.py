@@ -1,11 +1,14 @@
 """Main FastAPI application for Foreman."""
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from asyncpg import ConnectionFailureError, QueryCanceledError
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from foreman import __version__
 from foreman.api.v1.endpoints import generations, images, projects, styles, users
@@ -18,6 +21,7 @@ from foreman.telemetry import instrument_app, setup_telemetry
 
 configure_logging()
 logger = logging.getLogger(__name__)
+error_logger = logging.getLogger("foreman.errors")
 
 
 @asynccontextmanager
@@ -76,6 +80,44 @@ app.add_middleware(
 )
 instrument_app(app)
 app.add_middleware(RequestLoggingMiddleware)
+
+
+async def connection_failure_handler(request: Request, exc: Exception):
+    error_logger.exception(
+        "Database connection failed",
+        extra={"url": str(request.url), "method": request.method},
+    )
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Database temporarily unavailable"},
+    )
+
+
+async def query_canceled_handler(request: Request, exc: Exception):
+    error_logger.exception(
+        "Database query cancelled",
+        extra={"url": str(request.url), "method": request.method},
+    )
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Database temporarily unavailable"},
+    )
+
+
+async def timeout_error_handler(request: Request, exc: Exception):
+    error_logger.exception(
+        "Request timeout",
+        extra={"url": str(request.url), "method": request.method},
+    )
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Service temporarily unavailable"},
+    )
+
+
+app.add_exception_handler(ConnectionFailureError, connection_failure_handler)
+app.add_exception_handler(QueryCanceledError, query_canceled_handler)
+app.add_exception_handler(asyncio.TimeoutError, timeout_error_handler)
 
 # Include API routers
 app.include_router(users.router, prefix="/v1/users", tags=["users"])
