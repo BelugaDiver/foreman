@@ -4,6 +4,7 @@ import json
 import uuid
 
 from foreman.db import Database, sql
+from foreman.exceptions import ResourceNotFoundError
 from foreman.logging_config import get_logger
 from foreman.models.project import Project
 from foreman.schemas.project import ProjectCreate, ProjectUpdate
@@ -50,7 +51,7 @@ async def get_project_by_id(
     db: Database,
     project_id: uuid.UUID,
     user_id: uuid.UUID,
-) -> Project | None:
+) -> Project:
     """Retrieve a single project by ID scoped to the owning user."""
     logger.debug("Fetching project", extra={"project_id": str(project_id), "user_id": str(user_id)})
     stmt = sql(
@@ -60,7 +61,7 @@ async def get_project_by_id(
     )
     record = await db.fetchrow(stmt)
     if not record:
-        return None
+        raise ResourceNotFoundError("Project", str(project_id))
     return _parse_project_record(record)
 
 
