@@ -8,7 +8,8 @@
 - Centralized handlers in main.py for infrastructure errors (DB connection, timeouts)
 - Custom domain exceptions in foreman/exceptions.py for domain errors (not found, duplicates, invalid state)
 - Endpoints catch domain exceptions and return appropriate 4xx, let infrastructure errors propagate
-- All exceptions logged via `logger.exception()` for OTel auto-instrumentation capture
+- Domain exceptions (NotFound, InvalidState, Duplicate) are NOT logged as errors - only traced (expected user errors)
+- Infrastructure exceptions (DB connection, timeout, storage) ARE logged as errors for OTel
 
 **Tech Stack:** FastAPI, asyncpg, boto3 (storage), OpenTelemetry
 
@@ -579,7 +580,8 @@ This plan adds:
 - Domain exceptions: `ResourceNotFoundError`, `DuplicateResourceError`, `InvalidStateError`
 - Centralized 503 handlers for infrastructure: DB connection, query timeout, storage errors
 - Endpoints return proper 404/400 instead of generic 500
-- All exceptions logged via `logger.exception()` for OTel auto-instrumentation capture
+- Domain exceptions NOT logged (traced only) - expected user errors
+- Infrastructure exceptions logged with context for OTel
 
 Expected behavior changes:
 - DB unavailable → 503 "Database temporarily unavailable"
