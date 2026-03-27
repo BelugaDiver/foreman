@@ -1,0 +1,19 @@
+meta {
+  name: Cancel Generation
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/v1/generations/{{generationId}}/cancel
+}
+
+headers {
+  X-User-ID: {{userId}}
+}
+
+tests {
+  test("should return 200", function() {
+    expect(res.status).to.equal(200);
+  });
+}

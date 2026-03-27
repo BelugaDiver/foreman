@@ -1,0 +1,19 @@
+meta {
+  name: Get Image
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/v1/images/{{imageId}}
+}
+
+headers {
+  X-User-ID: {{userId}}
+}
+
+tests {
+  test("should return 200", function() {
+    expect(res.status).to.equal(200);
+  });
+}

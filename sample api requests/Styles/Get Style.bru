@@ -1,0 +1,19 @@
+meta {
+  name: Get Style
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/v1/styles/{{styleId}}
+}
+
+headers {
+  X-User-ID: {{userId}}
+}
+
+tests {
+  test("should return 200", function() {
+    expect(res.status).to.equal(200);
+  });
+}

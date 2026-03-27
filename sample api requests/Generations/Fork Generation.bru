@@ -1,0 +1,25 @@
+meta {
+  name: Fork Generation
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/v1/generations/{{generationId}}/fork
+}
+
+headers {
+  X-User-ID: {{userId}}
+}
+
+tests {
+  test("should return 201", function() {
+    expect(res.status).to.equal(201);
+  });
+}
+
+script:js {
+  if (res.status === 201) {
+    bru.setEnvVar("generationId", res.body.id);
+  }
+}

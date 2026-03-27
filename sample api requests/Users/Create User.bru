@@ -1,0 +1,33 @@
+meta {
+  name: Create User
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/v1/users
+  body: json
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "test@example.com",
+    "full_name": "Test User"
+  }
+}
+
+tests {
+  test("should return 201", function() {
+    expect(res.status).to.equal(201);
+  });
+}
+
+script:js {
+  if (res.status === 201) {
+    bru.setEnvVar("userId", res.body.id);
+  }
+}

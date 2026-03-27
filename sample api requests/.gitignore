@@ -1,0 +1,12 @@
+# Bruno collection gitignore
+
+# Environment variables with sensitive data
+environments/
+
+# Temporary files
+*.tmp
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,27 @@
+meta {
+  name: Update Generation
+  type: http
+  seq: 4
+}
+
+patch {
+  url: {{baseUrl}}/v1/generations/{{generationId}}
+  body: json
+}
+
+headers {
+  Content-Type: application/json
+  X-User-ID: {{userId}}
+}
+
+body:json {
+  {
+    "status": "processing"
+  }
+}
+
+tests {
+  test("should return 200", function() {
+    expect(res.status).to.equal(200);
+  });
+}
