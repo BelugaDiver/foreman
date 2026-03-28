@@ -26,8 +26,9 @@ class DuplicateResourceError(Exception):
 class InvalidStateError(Exception):
     """Raised when operation can't be performed due to current resource state."""
 
-    def __init__(self, resource: str, current_state: str, operation: str):
+    def __init__(self, resource: str, identifier: str, operation: str, valid_states: str):
         self.resource = resource
-        self.current_state = current_state
+        self.identifier = identifier
         self.operation = operation
-        super().__init__(f"Cannot {operation} {resource} in state '{current_state}'")
+        self.valid_states = valid_states
+        super().__init__(f"Cannot {operation} {resource} in state '{valid_states}'")

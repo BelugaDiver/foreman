@@ -7,7 +7,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from foreman.api.deps import get_current_user, get_db
 from foreman.audit import AuditEvent, log_audit
 from foreman.db import Database
-from foreman.exceptions import ResourceNotFoundError
+from foreman.exceptions import InvalidStateError, ResourceNotFoundError
 from foreman.logging_config import get_logger
 from foreman.models.user import User
 from foreman.repositories import postgres_generations_repository as repo
@@ -125,10 +125,7 @@ async def cancel_generation(
         raise HTTPException(status_code=404, detail="Generation not found")
 
     if generation.status not in {"pending", "processing"}:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot cancel generation in current status",
-        )
+        raise InvalidStateError("Generation", str(generation_id), "cancel", "pending or processing")
 
     try:
         updated = await repo.update_generation(
@@ -149,6 +146,8 @@ async def cancel_generation(
         return updated
     except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Generation not found")
+    except InvalidStateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception:
         logger.exception("Error cancelling generation")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -171,10 +170,7 @@ async def retry_generation(
         raise HTTPException(status_code=404, detail="Generation not found")
 
     if original.status not in {"failed", "cancelled"}:
-        raise HTTPException(
-            status_code=400,
-            detail="Can only retry failed or cancelled generations",
-        )
+        raise InvalidStateError("Generation", str(generation_id), "retry", "failed or cancelled")
 
     try:
         generation_in = GenerationCreate(
@@ -201,6 +197,8 @@ async def retry_generation(
             extra={"generation_id": str(generation_id), "attempt": generation.attempt},
         )
         return generation
+    except InvalidStateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception:
         logger.exception("Error retrying generation")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -223,10 +221,7 @@ async def fork_generation(
         raise HTTPException(status_code=404, detail="Generation not found")
 
     if not parent.output_image_url:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot fork generation without output image",
-        )
+        raise InvalidStateError("Generation", str(generation_id), "fork", "has output image")
 
     try:
         generation_in = GenerationCreate(
@@ -252,6 +247,8 @@ async def fork_generation(
             extra={"original_id": str(generation_id), "new_id": str(new_generation.id)},
         )
         return new_generation
+    except InvalidStateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception:
         logger.exception("Error forking generation")
         raise HTTPException(status_code=500, detail="Internal server error")
