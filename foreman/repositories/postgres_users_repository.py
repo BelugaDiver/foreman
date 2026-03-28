@@ -5,7 +5,7 @@ import uuid
 import asyncpg
 
 from foreman.db import Database, sql
-from foreman.exceptions import DuplicateResourceError
+from foreman.exceptions import DuplicateResourceError, ResourceNotFoundError
 from foreman.logging_config import get_logger
 from foreman.models.user import User
 from foreman.schemas.user import UserCreate, UserUpdate
@@ -17,13 +17,13 @@ logger = get_logger("foreman.repositories.users")
 ALLOWED_UPDATE_FIELDS: frozenset[str] = frozenset({"email", "full_name"})
 
 
-async def get_user_by_id(db: Database, user_id: uuid.UUID) -> User | None:
+async def get_user_by_id(db: Database, user_id: uuid.UUID) -> User:
     """Retrieve an active user from the database."""
     logger.debug("Fetching user by ID", extra={"user_id": str(user_id)})
     stmt = sql("SELECT * FROM users WHERE id=$1 AND is_deleted=FALSE", user_id)
     record = await db.fetchrow(stmt)
     if not record:
-        return None
+        raise ResourceNotFoundError("User", user_id)
     return User(**dict(record))
 
 
