@@ -69,8 +69,8 @@ async def create_user(db: Database, user_in: UserCreate) -> User:
             user_in.full_name,
         )
         record = await db.fetchrow(stmt)
-    except asyncpg.UniqueViolationError:
-        raise DuplicateResourceError("User", "email", user_in.email)
+    except asyncpg.UniqueViolationError as exc:
+        raise DuplicateResourceError("User", "email", user_in.email) from exc
     if not record:
         raise RuntimeError("Failed to create user record")
     return User(**dict(record))

@@ -63,7 +63,9 @@ async def get_generation_by_id(
     user_id: uuid.UUID,
 ) -> Generation:
     """Retrieve a generation by ID scoped to the owning user."""
-    logger.debug("Fetching generation", extra={"generation_id": str(generation_id)})
+    logger.debug(
+        "Fetching generation", extra={"generation_id": str(generation_id), "user_id": str(user_id)}
+    )
     stmt = sql(
         """
         SELECT g.*

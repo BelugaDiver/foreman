@@ -117,13 +117,42 @@ async def timeout_error_handler(request: Request, exc: Exception):
 
 
 async def storage_error_handler(request: Request, exc: Exception):
+    error_code = None
+    if isinstance(exc, ClientError):
+        try:
+            error_code = exc.response.get("Error", {}).get("Code")  # type: ignore[union-attr]
+        except Exception:
+            error_code = None
+
     error_logger.exception(
         "Storage operation failed",
-        extra={"url": str(request.url), "method": request.method, "error_type": type(exc).__name__},
+        extra={
+            "url": str(request.url),
+            "method": request.method,
+            "error_type": type(exc).__name__,
+            "error_code": error_code,
+        },
     )
+
+    transient_error_codes = {
+        "SlowDown",
+        "RequestTimeout",
+        "InternalError",
+        "ServiceUnavailable",
+        "Throttling",
+        "RequestLimitExceeded",
+    }
+
+    if error_code in transient_error_codes:
+        status_code = 503
+        detail = "Storage service temporarily unavailable"
+    else:
+        status_code = 500
+        detail = "Storage service error"
+
     return JSONResponse(
-        status_code=503,
-        content={"detail": "Storage service temporarily unavailable"},
+        status_code=status_code,
+        content={"detail": detail},
     )
 
 

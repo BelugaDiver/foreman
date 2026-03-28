@@ -45,7 +45,7 @@ async def get_image_by_id(
     user_id: uuid.UUID,
 ) -> Image:
     """Retrieve an image by ID scoped to the owning user."""
-    logger.debug("Fetching image", extra={"image_id": str(image_id)})
+    logger.debug("Fetching image", extra={"image_id": str(image_id), "user_id": str(user_id)})
     stmt = sql(
         "SELECT * FROM images WHERE id=$1 AND user_id=$2",
         image_id,

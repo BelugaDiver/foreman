@@ -25,8 +25,8 @@ async def create_user(
         user = await crud.create_user(db=db, user_in=user_in)
         logger.info("User created", extra={"user_id": str(user.id), "email": user.email})
         return user
-    except DuplicateResourceError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+    except DuplicateResourceError:
+        raise HTTPException(status_code=409, detail="A user with this information already exists")
     except Exception:
         logger.exception("Error creating user")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -58,8 +58,8 @@ async def update_user_me(
             resource_type="user",
         )
         return user
-    except DuplicateResourceError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+    except DuplicateResourceError:
+        raise HTTPException(status_code=409, detail="A user with this information already exists")
     except Exception:
         logger.exception("Error updating user")
         raise HTTPException(status_code=500, detail="Internal server error")
