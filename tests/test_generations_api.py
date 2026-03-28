@@ -8,6 +8,7 @@ from fastapi import Header, HTTPException
 from fastapi.testclient import TestClient
 
 from foreman.api.deps import get_current_user, get_db
+from foreman.exceptions import ResourceNotFoundError
 from foreman.main import app
 from foreman.models.generation import Generation
 from foreman.models.user import User
@@ -76,17 +77,17 @@ def mock_dependencies(monkeypatch):
     async def mock_get_generation_by_id(db, generation_id, user_id):
         generation = generations_db.get(generation_id)
         if not generation:
-            return None
+            raise ResourceNotFoundError("Generation", str(generation_id))
         if generation_owners.get(generation_id) != user_id:
-            return None
+            raise ResourceNotFoundError("Generation", str(generation_id))
         return generation
 
     async def mock_delete_generation(db, generation_id, user_id):
         generation = generations_db.get(generation_id)
         if not generation:
-            return False
+            raise ResourceNotFoundError("Generation", str(generation_id))
         if generation_owners.get(generation_id) != user_id:
-            return False
+            raise ResourceNotFoundError("Generation", str(generation_id))
 
         del generations_db[generation_id]
         del generation_owners[generation_id]
@@ -102,9 +103,9 @@ def mock_dependencies(monkeypatch):
     async def mock_update_generation(db, generation_id, user_id, generation_in):
         generation = generations_db.get(generation_id)
         if not generation:
-            return None
+            raise ResourceNotFoundError("Generation", str(generation_id))
         if generation_owners.get(generation_id) != user_id:
-            return None
+            raise ResourceNotFoundError("Generation", str(generation_id))
         update_data = generation_in.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(generation, key, value)

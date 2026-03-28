@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from foreman.exceptions import ResourceNotFoundError
 from foreman.repositories import postgres_generations_repository as repo
 from foreman.schemas.generation import GenerationCreate, GenerationUpdate
 from tests.conftest import USER_A_ID, USER_B_ID
@@ -99,19 +100,15 @@ async def test_get_generation_by_id_scopes_by_owner() -> None:
 
 @pytest.mark.asyncio
 async def test_get_generation_by_id_returns_none_when_not_owned_or_missing() -> None:
-    """get_generation_by_id should return None when no scoped record exists."""
+    """get_generation_by_id should raise ResourceNotFoundError when no scoped record exists."""
     # Arrange
     db = AsyncMock()
     generation_id = uuid.uuid4()
     db.fetchrow = AsyncMock(return_value=None)
 
-    # Act
-    generation = await repo.get_generation_by_id(
-        db=db, generation_id=generation_id, user_id=USER_B_ID
-    )
-
-    # Assert
-    assert generation is None
+    # Act / Assert
+    with pytest.raises(ResourceNotFoundError):
+        await repo.get_generation_by_id(db=db, generation_id=generation_id, user_id=USER_B_ID)
 
 
 @pytest.mark.asyncio

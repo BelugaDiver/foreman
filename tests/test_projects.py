@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 # Local
 # ---------------------------------------------------------------------------
 from foreman.api.deps import get_current_user, get_db
+from foreman.exceptions import ResourceNotFoundError
 from foreman.main import app
 from foreman.models.project import Project
 from foreman.models.user import User
@@ -97,7 +98,7 @@ def mock_dependencies(monkeypatch):
     async def mock_get_project_by_id(db, project_id, user_id):
         project = projects_db.get(project_id)
         if not project or project.user_id != user_id:
-            return None
+            raise ResourceNotFoundError("Project", str(project_id))
         return project
 
     async def mock_create_project(db, user_id, project_in: ProjectCreate):
@@ -116,7 +117,7 @@ def mock_dependencies(monkeypatch):
     async def mock_update_project(db, project_id, user_id, project_in: ProjectUpdate):
         project = projects_db.get(project_id)
         if not project or project.user_id != user_id:
-            return None
+            raise ResourceNotFoundError("Project", str(project_id))
         for key, value in project_in.model_dump(exclude_unset=True).items():
             setattr(project, key, value)
         project.updated_at = datetime.now(timezone.utc)
@@ -125,9 +126,8 @@ def mock_dependencies(monkeypatch):
     async def mock_delete_project(db, project_id, user_id):
         project = projects_db.get(project_id)
         if not project or project.user_id != user_id:
-            return False
+            raise ResourceNotFoundError("Project", str(project_id))
         del projects_db[project_id]
-        return True
 
     monkeypatch.setattr("foreman.api.v1.endpoints.projects.crud.list_projects", mock_list_projects)
     monkeypatch.setattr(

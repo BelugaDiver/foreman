@@ -1,11 +1,11 @@
 """User management endpoints."""
 
-from asyncpg.exceptions import UniqueViolationError
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from foreman.api.deps import get_current_user, get_db
 from foreman.audit import AuditEvent, log_audit
 from foreman.db import Database
+from foreman.exceptions import DuplicateResourceError
 from foreman.logging_config import get_logger
 from foreman.models.user import User
 from foreman.repositories import postgres_users_repository as crud
@@ -25,8 +25,8 @@ async def create_user(
         user = await crud.create_user(db=db, user_in=user_in)
         logger.info("User created", extra={"user_id": str(user.id), "email": user.email})
         return user
-    except UniqueViolationError:
-        raise HTTPException(status_code=400, detail="User with this email already exists")
+    except DuplicateResourceError:
+        raise HTTPException(status_code=409, detail="A user with this information already exists")
     except Exception:
         logger.exception("Error creating user")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -58,8 +58,8 @@ async def update_user_me(
             resource_type="user",
         )
         return user
-    except UniqueViolationError:
-        raise HTTPException(status_code=400, detail="User with this email already exists")
+    except DuplicateResourceError:
+        raise HTTPException(status_code=409, detail="A user with this information already exists")
     except Exception:
         logger.exception("Error updating user")
         raise HTTPException(status_code=500, detail="Internal server error")

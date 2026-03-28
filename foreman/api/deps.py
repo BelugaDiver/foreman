@@ -5,6 +5,7 @@ import uuid
 from fastapi import Depends, Header, HTTPException, Request
 
 from foreman.db import Database
+from foreman.exceptions import ResourceNotFoundError
 from foreman.models.user import User
 from foreman.repositories import postgres_users_repository as crud
 
@@ -27,7 +28,10 @@ async def get_current_user(
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid X-User-ID format; must be UUID")
 
-    user = await crud.get_user_by_id(db, user_uuid)
+    try:
+        user = await crud.get_user_by_id(db, user_uuid)
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=401, detail="User not found")
 
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
