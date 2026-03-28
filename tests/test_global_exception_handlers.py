@@ -1,9 +1,8 @@
 """Tests for global exception handlers."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
+
 from starlette.requests import Request
-from starlette.responses import JSONResponse
 
 
 class TestGlobalExceptionHandlers:
@@ -11,9 +10,10 @@ class TestGlobalExceptionHandlers:
 
     def test_storage_transient_error_returns_503(self):
         """S3 transient error should return 503."""
-        from foreman.main import storage_error_handler
         from botocore.exceptions import ClientError
         from starlette.datastructures import URL
+
+        from foreman.main import storage_error_handler
 
         request = MagicMock(spec=Request)
         request.url = URL("https://s3.example.com/bucket/key")
@@ -29,9 +29,10 @@ class TestGlobalExceptionHandlers:
 
     def test_storage_non_transient_error_returns_500(self):
         """S3 non-transient error should return 500."""
-        from foreman.main import storage_error_handler
         from botocore.exceptions import ClientError
         from starlette.datastructures import URL
+
+        from foreman.main import storage_error_handler
 
         request = MagicMock(spec=Request)
         request.url = URL("https://s3.example.com/bucket/key")
@@ -47,9 +48,10 @@ class TestGlobalExceptionHandlers:
 
     def test_connection_failure_returns_503(self):
         """Database connection failure should return 503."""
-        from foreman.main import connection_failure_handler
         from asyncpg import ConnectionFailureError
         from starlette.datastructures import URL
+
+        from foreman.main import connection_failure_handler
 
         request = MagicMock(spec=Request)
         request.url = URL("http://testserver/v1/users")
@@ -64,8 +66,9 @@ class TestGlobalExceptionHandlers:
 
     def test_timeout_returns_503(self):
         """Timeout error should return 503."""
-        from foreman.main import timeout_error_handler
         from starlette.datastructures import URL
+
+        from foreman.main import timeout_error_handler
 
         request = MagicMock(spec=Request)
         request.url = URL("http://testserver/v1/users")
@@ -80,9 +83,10 @@ class TestGlobalExceptionHandlers:
 
     def test_query_canceled_returns_503(self):
         """Query canceled should return 503."""
-        from foreman.main import query_canceled_handler
         from asyncpg import QueryCanceledError
         from starlette.datastructures import URL
+
+        from foreman.main import query_canceled_handler
 
         request = MagicMock(spec=Request)
         request.url = URL("http://testserver/v1/users")

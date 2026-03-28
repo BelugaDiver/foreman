@@ -474,3 +474,193 @@ def test_update_generation_internal_error_returns_500(client, headers_a, monkeyp
     # Assert
     assert response.status_code == 500
     assert response.json() == {"detail": "Internal server error"}
+
+
+def test_update_generation_returns_404_when_not_found(client, headers_a, monkeypatch):
+    """PATCH /v1/generations/{id} should return 404 when update returns None."""
+    generation_id = uuid.uuid4()
+
+    async def mock_update(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("foreman.api.v1.endpoints.generations.repo.update_generation", mock_update)
+
+    response = client.patch(
+        f"/v1/generations/{generation_id}",
+        headers=headers_a,
+        json={"status": "completed"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_cancel_generation_returns_404_when_not_found(client, headers_a, monkeypatch):
+    """POST /v1/generations/{id}/cancel should return 404 when update returns None."""
+    generation_id = uuid.uuid4()
+
+    async def mock_get(*args, **kwargs):
+        return Generation(
+            id=generation_id,
+            project_id=uuid.uuid4(),
+            parent_id=None,
+            prompt="test",
+            style_id=None,
+            status="pending",
+            input_image_url="https://example.com/input.jpg",
+            output_image_url=None,
+            error_message=None,
+            model_used="test",
+            processing_time_ms=None,
+            attempt=1,
+            metadata={},
+            created_at=datetime.now(timezone.utc),
+            updated_at=None,
+        )
+
+    async def mock_update(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("foreman.api.v1.endpoints.generations.repo.get_generation_by_id", mock_get)
+    monkeypatch.setattr("foreman.api.v1.endpoints.generations.repo.update_generation", mock_update)
+
+    response = client.post(f"/v1/generations/{generation_id}/cancel", headers=headers_a)
+
+    assert response.status_code == 404
+
+
+def test_retry_generation_returns_404_when_not_found(client, headers_a, monkeypatch):
+    """POST /v1/generations/{id}/retry should return 404 when creation fails."""
+    generation_id = uuid.uuid4()
+
+    async def mock_get(*args, **kwargs):
+        return Generation(
+            id=generation_id,
+            project_id=uuid.uuid4(),
+            parent_id=None,
+            prompt="test",
+            style_id=None,
+            status="failed",
+            input_image_url="https://example.com/input.jpg",
+            output_image_url=None,
+            error_message=None,
+            model_used="test",
+            processing_time_ms=None,
+            attempt=1,
+            metadata={},
+            created_at=datetime.now(timezone.utc),
+            updated_at=None,
+        )
+
+    async def mock_create(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("foreman.api.v1.endpoints.generations.repo.get_generation_by_id", mock_get)
+    monkeypatch.setattr("foreman.api.v1.endpoints.generations.repo.create_generation", mock_create)
+
+    response = client.post(f"/v1/generations/{generation_id}/retry", headers=headers_a)
+
+    assert response.status_code == 500
+
+
+def test_fork_generation_returns_404_when_not_found(client, headers_a, monkeypatch):
+    """POST /v1/generations/{id}/fork should return 404 when get returns not found."""
+    generation_id = uuid.uuid4()
+
+    async def mock_get(*args, **kwargs):
+        raise ResourceNotFoundError("Generation", str(generation_id))
+
+    monkeypatch.setattr("foreman.api.v1.endpoints.generations.repo.get_generation_by_id", mock_get)
+
+    response = client.post(f"/v1/generations/{generation_id}/fork", headers=headers_a)
+
+    assert response.status_code == 404
+
+
+def test_fork_generation_returns_400_when_no_output(client, headers_a, monkeypatch):
+    """POST /v1/generations/{id}/fork should return 400 when parent has no output."""
+    generation_id = uuid.uuid4()
+
+    async def mock_get(*args, **kwargs):
+        return Generation(
+            id=generation_id,
+            project_id=uuid.uuid4(),
+            parent_id=None,
+            prompt="test",
+            style_id=None,
+            status="completed",
+            input_image_url="https://example.com/input.jpg",
+            output_image_url=None,
+            error_message=None,
+            model_used="test",
+            processing_time_ms=None,
+            attempt=1,
+            metadata={},
+            created_at=datetime.now(timezone.utc),
+            updated_at=None,
+        )
+
+    monkeypatch.setattr("foreman.api.v1.endpoints.generations.repo.get_generation_by_id", mock_get)
+
+    response = client.post(f"/v1/generations/{generation_id}/fork", headers=headers_a)
+
+    assert response.status_code == 400
+
+
+def test_cancel_generation_returns_400_when_invalid_state(client, headers_a, monkeypatch):
+    """POST /v1/generations/{id}/cancel should return 400 when status is not pending/processing."""
+    generation_id = uuid.uuid4()
+
+    async def mock_get(*args, **kwargs):
+        return Generation(
+            id=generation_id,
+            project_id=uuid.uuid4(),
+            parent_id=None,
+            prompt="test",
+            style_id=None,
+            status="completed",
+            input_image_url="https://example.com/input.jpg",
+            output_image_url=None,
+            error_message=None,
+            model_used="test",
+            processing_time_ms=None,
+            attempt=1,
+            metadata={},
+            created_at=datetime.now(timezone.utc),
+            updated_at=None,
+        )
+
+    monkeypatch.setattr("foreman.api.v1.endpoints.generations.repo.get_generation_by_id", mock_get)
+
+    response = client.post(f"/v1/generations/{generation_id}/cancel", headers=headers_a)
+
+    assert response.status_code == 400
+
+
+def test_retry_generation_returns_400_when_invalid_state(client, headers_a, monkeypatch):
+    """POST /v1/generations/{id}/retry should return 400 when status is not failed/cancelled."""
+    generation_id = uuid.uuid4()
+
+    async def mock_get(*args, **kwargs):
+        return Generation(
+            id=generation_id,
+            project_id=uuid.uuid4(),
+            parent_id=None,
+            prompt="test",
+            style_id=None,
+            status="completed",
+            input_image_url="https://example.com/input.jpg",
+            output_image_url=None,
+            error_message=None,
+            model_used="test",
+            processing_time_ms=None,
+            attempt=1,
+            metadata={},
+            created_at=datetime.now(timezone.utc),
+            updated_at=None,
+        )
+
+    monkeypatch.setattr("foreman.api.v1.endpoints.generations.repo.get_generation_by_id", mock_get)
+
+    response = client.post(f"/v1/generations/{generation_id}/retry", headers=headers_a)
+
+    assert response.status_code == 400
