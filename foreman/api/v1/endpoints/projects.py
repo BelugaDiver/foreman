@@ -48,9 +48,9 @@ async def create_project(
             extra={"project_id": str(project.id), "user_id": str(current_user.id)},
         )
         return project
-    except Exception:
+    except Exception as exc:
         logger.exception("Error creating project")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.get("/{project_id}", response_model=ProjectRead)
@@ -114,9 +114,9 @@ async def create_generation(
         return generation
     except HTTPException:
         raise
-    except Exception:
+    except Exception as exc:
         logger.exception("Error creating generation")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.get("/{project_id}/generations", response_model=list[GenerationRead])
@@ -170,9 +170,9 @@ async def update_project(
         return project
     except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Project not found")
-    except Exception:
+    except Exception as exc:
         logger.exception("Error updating project")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.delete("/{project_id}", status_code=204)
@@ -193,6 +193,6 @@ async def delete_project(
         logger.info("Project deleted", extra={"project_id": str(project_id)})
     except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Project not found")
-    except Exception:
+    except Exception as exc:
         logger.exception("Error deleting project")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc

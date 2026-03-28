@@ -32,9 +32,9 @@ async def list_generations(
             limit=limit,
             offset=offset,
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("Error listing generations")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.get("/{generation_id}", response_model=GenerationRead)
@@ -74,9 +74,9 @@ async def update_generation(
         return updated
     except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Generation not found")
-    except Exception:
+    except Exception as exc:
         logger.exception("Error updating generation")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.delete("/{generation_id}", status_code=204)
@@ -103,9 +103,9 @@ async def delete_generation(
         logger.info("Generation deleted", extra={"generation_id": str(generation_id)})
     except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Generation not found")
-    except Exception:
+    except Exception as exc:
         logger.exception("Error deleting generation")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.post("/{generation_id}/cancel", response_model=GenerationRead)
@@ -151,9 +151,9 @@ async def cancel_generation(
         raise HTTPException(status_code=404, detail="Generation not found")
     except InvalidStateError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception:
+    except Exception as exc:
         logger.exception("Error cancelling generation")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.post("/{generation_id}/retry", response_model=GenerationRead, status_code=201)
@@ -203,9 +203,9 @@ async def retry_generation(
         raise HTTPException(status_code=404, detail="Generation not found")
     except InvalidStateError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception:
+    except Exception as exc:
         logger.exception("Error retrying generation")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.post("/{generation_id}/fork", response_model=GenerationRead, status_code=201)
@@ -254,6 +254,6 @@ async def fork_generation(
         raise HTTPException(status_code=404, detail="Generation not found")
     except InvalidStateError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception:
+    except Exception as exc:
         logger.exception("Error forking generation")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc

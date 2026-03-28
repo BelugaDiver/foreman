@@ -38,7 +38,7 @@ async def create_upload_intent(
 ):
     """Create an upload intent and return a presigned URL for direct upload to object storage."""
     try:
-        project = await project_crud.get_project_by_id(db, project_id, current_user.id)
+        await project_crud.get_project_by_id(db, project_id, current_user.id)
     except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -64,7 +64,7 @@ async def create_upload_intent(
 
     try:
         image = await crud.create_image(db, image_in, url=None)
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "Failed to create image record during upload intent",
             extra={
@@ -73,7 +73,7 @@ async def create_upload_intent(
                 "filename": request.filename,
             },
         )
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
     logger.info(
         "Upload intent created",

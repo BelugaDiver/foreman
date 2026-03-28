@@ -27,9 +27,9 @@ async def create_user(
         return user
     except DuplicateResourceError:
         raise HTTPException(status_code=409, detail="A user with this information already exists")
-    except Exception:
+    except Exception as exc:
         logger.exception("Error creating user")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.get("/me", response_model=UserRead)
@@ -60,9 +60,9 @@ async def update_user_me(
         return user
     except DuplicateResourceError:
         raise HTTPException(status_code=409, detail="A user with this information already exists")
-    except Exception:
+    except Exception as exc:
         logger.exception("Error updating user")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
 
 @router.delete("/me", status_code=204)
@@ -82,6 +82,6 @@ async def delete_user_me(
             resource_type="user",
         )
         logger.info("User deleted", extra={"user_id": str(current_user.id)})
-    except Exception:
+    except Exception as exc:
         logger.exception("Error deleting user")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
