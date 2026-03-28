@@ -41,12 +41,16 @@ async def create_project(
     db: Database = Depends(get_db),
 ):
     """Create a new design project."""
-    project = await crud.create_project(db=db, user_id=current_user.id, project_in=project_in)
-    logger.info(
-        "Project created",
-        extra={"project_id": str(project.id), "user_id": str(current_user.id)},
-    )
-    return project
+    try:
+        project = await crud.create_project(db=db, user_id=current_user.id, project_in=project_in)
+        logger.info(
+            "Project created",
+            extra={"project_id": str(project.id), "user_id": str(current_user.id)},
+        )
+        return project
+    except Exception:
+        logger.exception("Error creating project")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/{project_id}", response_model=ProjectRead)

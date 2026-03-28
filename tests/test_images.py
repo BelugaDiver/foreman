@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 # Local
 # ---------------------------------------------------------------------------
 from foreman.api.deps import get_current_user, get_db
+from foreman.exceptions import ResourceNotFoundError
 from foreman.main import app
 from foreman.models.image import Image
 from foreman.models.project import Project
@@ -112,7 +113,7 @@ def mock_dependencies(monkeypatch):
     async def mock_get_image_by_id(db, image_id, user_id):
         image = images_db.get(image_id)
         if not image or image.user_id != user_id:
-            return None
+            raise ResourceNotFoundError("Image", str(image_id))
         return image
 
     async def mock_create_image(db, image_in: ImageCreate, url=None):
