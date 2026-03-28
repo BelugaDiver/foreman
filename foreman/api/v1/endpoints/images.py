@@ -102,8 +102,9 @@ async def list_images(
     current_user: User = Depends(get_current_user),
 ):
     """List all images for a project."""
-    project = await project_crud.get_project_by_id(db, project_id, current_user.id)
-    if not project:
+    try:
+        await project_crud.get_project_by_id(db, project_id, current_user.id)
+    except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Project not found")
 
     logger.debug(

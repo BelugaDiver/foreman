@@ -2,6 +2,8 @@
 
 import uuid
 
+import asyncpg
+
 from foreman.db import Database, sql
 from foreman.exceptions import DuplicateResourceError
 from foreman.logging_config import get_logger
@@ -67,10 +69,8 @@ async def create_user(db: Database, user_in: UserCreate) -> User:
             user_in.full_name,
         )
         record = await db.fetchrow(stmt)
-    except Exception as e:
-        if "23505" in str(e):
-            raise DuplicateResourceError("User", "email", user_in.email)
-        raise
+    except asyncpg.UniqueViolationError:
+        raise DuplicateResourceError("User", "email", user_in.email)
     if not record:
         raise RuntimeError("Failed to create user record")
     return User(**dict(record))
