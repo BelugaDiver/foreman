@@ -4,12 +4,13 @@ from __future__ import annotations
 
 # Stdlib
 import importlib
+import inspect
 import pkgutil
-import re  # noqa: F401 - needed for Task 4 (SQL syntax tests)
+import re
 from pathlib import Path
 
 # Third-party
-import sqlparse  # noqa: F401 - needed for Task 4 (SQL syntax tests)
+import sqlparse
 
 
 def _get_migration_modules():
@@ -99,3 +100,31 @@ class TestMigrationDependencies:
         for node in graph:
             if node not in visited:
                 assert not has_cycle(node), f"Cycle detected starting from {node}"
+
+
+class TestMigrationSQL:
+    """Tests for SQL syntax in migrations."""
+
+    def test_upgrade_sql_syntax_valid(self):
+        """Upgrade SQL statements should be syntactically valid."""
+        for module in _get_migration_modules():
+            upgrade_source = inspect.getsource(module.upgrade)
+
+            # Extract SQL from op.execute() calls using regex
+            sql_statements = re.findall(r'op\.execute\(\s*"""(.+?)"""', upgrade_source, re.DOTALL)
+
+            for sql in sql_statements:
+                # sqlparse.parse() returns list of statements; if empty, syntax is invalid
+                parsed = sqlparse.parse(sql)
+                assert len(parsed) > 0, f"Invalid SQL syntax in {module.__name__} upgrade: {sql}"
+
+    def test_downgrade_sql_syntax_valid(self):
+        """Downgrade SQL statements should be syntactically valid."""
+        for module in _get_migration_modules():
+            downgrade_source = inspect.getsource(module.downgrade)
+
+            sql_statements = re.findall(r'op\.execute\(\s*"""(.+?)"""', downgrade_source, re.DOTALL)
+
+            for sql in sql_statements:
+                parsed = sqlparse.parse(sql)
+                assert len(parsed) > 0, f"Invalid SQL syntax in {module.__name__} downgrade: {sql}"
