@@ -8,6 +8,7 @@ from fastapi import Header, HTTPException
 from fastapi.testclient import TestClient
 
 from foreman.api.deps import get_current_user, get_db
+from foreman.exceptions import ResourceNotFoundError
 from foreman.main import app
 from foreman.models.generation import Generation
 from foreman.models.project import Project
@@ -83,9 +84,9 @@ def mock_dependencies(monkeypatch):
     async def mock_get_project_by_id(db, project_id, user_id):
         project = projects_db.get(project_id)
         if not project:
-            return None
+            raise ResourceNotFoundError("Project", str(project_id))
         if project.user_id != user_id:
-            return None
+            raise ResourceNotFoundError("Project", str(project_id))
         return project
 
     async def mock_get_generation_by_id(db, generation_id, user_id):

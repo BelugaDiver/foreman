@@ -4,6 +4,7 @@ import uuid
 from typing import Optional
 
 from foreman.db import Database, sql
+from foreman.exceptions import ResourceNotFoundError
 from foreman.logging_config import get_logger
 from foreman.models.image import Image
 from foreman.schemas.image import ImageCreate, ImageUpdate
@@ -42,8 +43,8 @@ async def get_image_by_id(
     db: Database,
     image_id: uuid.UUID,
     user_id: uuid.UUID,
-) -> Optional[Image]:
-    """Retrieve a single image by ID scoped to the owning user."""
+) -> Image:
+    """Retrieve an image by ID scoped to the owning user."""
     logger.debug("Fetching image", extra={"image_id": str(image_id), "user_id": str(user_id)})
     stmt = sql(
         "SELECT * FROM images WHERE id=$1 AND user_id=$2",
@@ -52,7 +53,7 @@ async def get_image_by_id(
     )
     record = await db.fetchrow(stmt)
     if not record:
-        return None
+        raise ResourceNotFoundError("Image", str(image_id))
     return Image(**dict(record))
 
 
@@ -101,7 +102,10 @@ async def update_image(
     }
 
     if not update_data:
-        return await get_image_by_id(db, image_id, user_id)
+        try:
+            return await get_image_by_id(db, image_id, user_id)
+        except ResourceNotFoundError:
+            return None
 
     logger.debug("Updating image", extra={"image_id": str(image_id)})
 

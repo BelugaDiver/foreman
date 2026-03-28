@@ -7,6 +7,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from foreman.api.deps import get_current_user, get_db
 from foreman.audit import AuditEvent, log_audit
 from foreman.db import Database
+from foreman.exceptions import ResourceNotFoundError
 from foreman.logging_config import get_logger
 from foreman.models.user import User
 from foreman.repositories import postgres_images_repository as crud
@@ -36,8 +37,9 @@ async def create_upload_intent(
     storage: StorageProtocol = Depends(get_storage),
 ):
     """Create an upload intent and return a presigned URL for direct upload to object storage."""
-    project = await project_crud.get_project_by_id(db, project_id, current_user.id)
-    if not project:
+    try:
+        project = await project_crud.get_project_by_id(db, project_id, current_user.id)
+    except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Project not found")
 
     logger.info(
@@ -101,8 +103,9 @@ async def list_images(
     current_user: User = Depends(get_current_user),
 ):
     """List all images for a project."""
-    project = await project_crud.get_project_by_id(db, project_id, current_user.id)
-    if not project:
+    try:
+        await project_crud.get_project_by_id(db, project_id, current_user.id)
+    except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Project not found")
 
     logger.debug(
@@ -130,8 +133,9 @@ async def get_image(
     storage: StorageProtocol = Depends(get_storage),
 ):
     """Get image metadata with a signed download URL."""
-    image = await crud.get_image_by_id(db, image_id, current_user.id)
-    if not image:
+    try:
+        image = await crud.get_image_by_id(db, image_id, current_user.id)
+    except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Image not found")
 
     logger.info(
@@ -156,8 +160,9 @@ async def delete_image(
     storage: StorageProtocol = Depends(get_storage),
 ):
     """Delete an image from storage and database."""
-    image = await crud.get_image_by_id(db, image_id, current_user.id)
-    if not image:
+    try:
+        image = await crud.get_image_by_id(db, image_id, current_user.id)
+    except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Image not found")
 
     try:

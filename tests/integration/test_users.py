@@ -22,13 +22,13 @@ async def test_create_user(client: httpx.AsyncClient):
 
 @pytest.mark.asyncio
 async def test_create_user_duplicate_email(client: httpx.AsyncClient):
-    """POST /v1/users with duplicate email should return 400."""
+    """POST /v1/users with duplicate email should return 409."""
     payload = {"email": "duplicate@example.com", "full_name": "First User"}
     resp1 = await client.post("/v1/users", json=payload)
     assert resp1.status_code == 201
 
     resp2 = await client.post("/v1/users", json=payload)
-    assert resp2.status_code == 400
+    assert resp2.status_code == 409
 
 
 @pytest.mark.asyncio

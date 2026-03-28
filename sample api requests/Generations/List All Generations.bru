@@ -1,0 +1,20 @@
+meta {
+  name: All Generations
+  type: http
+}
+
+get {
+  url: {{baseUrl}}/v1/generations?limit=20&offset=0
+  body: none
+  auth: none
+}
+
+headers {
+  X-User-ID: {{userId}}
+}
+
+tests {
+  test("should return 200", function() {
+    expect(res.status).to.equal(200);
+  });
+}

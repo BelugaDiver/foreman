@@ -27,7 +27,7 @@ Add exception handlers in `main.py` for common infrastructure exceptions:
 
 | Exception | HTTP Status | Message |
 |-----------|-------------|---------|
-| `asyncpg.ConnectionFailure` | 503 | "Database temporarily unavailable" |
+| `asyncpg.ConnectionFailureError` | 503 | "Database temporarily unavailable" |
 | `asyncpg.QueryCanceledError` | 503 | "Database temporarily unavailable" |
 | `asyncio.TimeoutError` | 503 | "Service temporarily unavailable" |
 | Storage timeout/connection | 503 | "Storage service temporarily unavailable" |

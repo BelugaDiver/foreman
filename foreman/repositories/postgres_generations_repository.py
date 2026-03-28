@@ -4,6 +4,7 @@ import json
 import uuid
 
 from foreman.db import Database, sql
+from foreman.exceptions import ResourceNotFoundError
 from foreman.logging_config import get_logger
 from foreman.models.generation import Generation
 from foreman.schemas.generation import GenerationCreate, GenerationUpdate
@@ -60,8 +61,8 @@ async def get_generation_by_id(
     db: Database,
     generation_id: uuid.UUID,
     user_id: uuid.UUID,
-) -> Generation | None:
-    """Retrieve a generation by ID, scoped to the owning user."""
+) -> Generation:
+    """Retrieve a generation by ID scoped to the owning user."""
     logger.debug(
         "Fetching generation", extra={"generation_id": str(generation_id), "user_id": str(user_id)}
     )
@@ -77,7 +78,7 @@ async def get_generation_by_id(
     )
     record = await db.fetchrow(stmt)
     if not record:
-        return None
+        raise ResourceNotFoundError("Generation", str(generation_id))
     return _parse_generation_record(record)
 
 

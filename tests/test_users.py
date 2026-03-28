@@ -10,7 +10,6 @@ from datetime import datetime, timezone
 # Third-party
 # ---------------------------------------------------------------------------
 import pytest
-from asyncpg.exceptions import UniqueViolationError
 from fastapi import Header, HTTPException
 from fastapi.testclient import TestClient
 
@@ -18,6 +17,7 @@ from fastapi.testclient import TestClient
 # Local
 # ---------------------------------------------------------------------------
 from foreman.api.deps import get_current_user, get_db
+from foreman.exceptions import DuplicateResourceError
 from foreman.main import app
 from foreman.models.user import User
 from foreman.schemas.user import UserCreate, UserUpdate
@@ -62,7 +62,7 @@ def mock_dependencies(monkeypatch):
     async def mock_create_user(db, user_in: UserCreate):
         for u in users_db.values():
             if u.email == user_in.email:
-                raise UniqueViolationError("unique constraint violation")
+                raise DuplicateResourceError("User", "email", user_in.email)
         new_user = User(
             id=uuid.uuid4(),
             email=user_in.email,
@@ -131,8 +131,8 @@ def test_create_user(client):
     assert "id" in data
 
 
-def test_create_user_duplicate_email_returns_400(client):
-    """POST /v1/users/ with a duplicate e-mail should return 400."""
+def test_create_user_duplicate_email_returns_409(client):
+    """POST /v1/users/ with a duplicate e-mail should return 409."""
     # Arrange
     payload = {"email": "dupe@example.com", "full_name": "First"}
     client.post("/v1/users/", json=payload)
@@ -141,7 +141,7 @@ def test_create_user_duplicate_email_returns_400(client):
     response = client.post("/v1/users/", json={"email": "dupe@example.com", "full_name": "Second"})
 
     # Assert
-    assert response.status_code == 400
+    assert response.status_code == 409
 
 
 def test_get_user_me(client):

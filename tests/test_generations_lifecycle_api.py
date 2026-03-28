@@ -8,6 +8,7 @@ from fastapi import Header, HTTPException
 from fastapi.testclient import TestClient
 
 from foreman.api.deps import get_current_user, get_db
+from foreman.exceptions import ResourceNotFoundError
 from foreman.main import app
 from foreman.models.generation import Generation
 from foreman.models.user import User
@@ -68,17 +69,17 @@ def mock_dependencies(monkeypatch):
     async def mock_get_generation_by_id(db, generation_id, user_id):
         generation = generations_db.get(generation_id)
         if not generation:
-            return None
+            raise ResourceNotFoundError("Generation", str(generation_id))
         if generation_owners.get(generation_id) != user_id:
-            return None
+            raise ResourceNotFoundError("Generation", str(generation_id))
         return generation
 
     async def mock_update_generation(db, generation_id, user_id, generation_in: GenerationUpdate):
         generation = generations_db.get(generation_id)
         if not generation:
-            return None
+            raise ResourceNotFoundError("Generation", str(generation_id))
         if generation_owners.get(generation_id) != user_id:
-            return None
+            raise ResourceNotFoundError("Generation", str(generation_id))
 
         updates = generation_in.model_dump(exclude_unset=True)
         for key, value in updates.items():
@@ -213,7 +214,10 @@ def test_cancel_generation_rejects_terminal_state(client, headers_a):
 
     # Assert
     assert response.status_code == 400
-    assert response.json() == {"detail": "Cannot cancel generation in current status"}
+    assert (
+        response.json()["detail"]
+        == "Cannot cancel Generation in state 'completed'. Valid states: pending or processing"
+    )
 
 
 def test_cancel_generation_not_found_for_other_owner(client, headers_a, headers_b):
@@ -259,7 +263,7 @@ def test_retry_rejects_completed(client, headers_a):
 
     # Assert
     assert response.status_code == 400
-    assert "Can only retry failed or cancelled" in response.json()["detail"]
+    assert "Cannot retry Generation in state" in response.json()["detail"]
 
 
 def test_retry_rejects_pending(client, headers_a):
@@ -315,7 +319,10 @@ def test_fork_generation_requires_output_image(client, headers_a):
 
     # Assert
     assert response.status_code == 400
-    assert response.json() == {"detail": "Cannot fork generation without output image"}
+    assert (
+        response.json()["detail"]
+        == "Cannot fork Generation in state 'no output'. Valid states: has output image"
+    )
 
 
 def test_lifecycle_actions_require_auth(client):

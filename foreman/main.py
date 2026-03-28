@@ -1,11 +1,15 @@
 """Main FastAPI application for Foreman."""
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from asyncpg import ConnectionFailureError, QueryCanceledError
+from botocore.exceptions import ClientError, EndpointConnectionError
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from foreman import __version__
 from foreman.api.v1.endpoints import generations, images, projects, styles, users
@@ -18,6 +22,7 @@ from foreman.telemetry import instrument_app, setup_telemetry
 
 configure_logging()
 logger = logging.getLogger(__name__)
+error_logger = logging.getLogger("foreman.errors")
 
 
 @asynccontextmanager
@@ -76,6 +81,86 @@ app.add_middleware(
 )
 instrument_app(app)
 app.add_middleware(RequestLoggingMiddleware)
+
+
+async def connection_failure_handler(request: Request, exc: Exception):
+    error_logger.exception(
+        "Database connection failed",
+        extra={"url": str(request.url), "method": request.method},
+    )
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Database temporarily unavailable"},
+    )
+
+
+async def query_canceled_handler(request: Request, exc: Exception):
+    error_logger.exception(
+        "Database query cancelled",
+        extra={"url": str(request.url), "method": request.method},
+    )
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Database temporarily unavailable"},
+    )
+
+
+async def timeout_error_handler(request: Request, exc: Exception):
+    error_logger.exception(
+        "Request timeout",
+        extra={"url": str(request.url), "method": request.method},
+    )
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Service temporarily unavailable"},
+    )
+
+
+async def storage_error_handler(request: Request, exc: Exception):
+    error_code = None
+    if isinstance(exc, ClientError):
+        try:
+            error_code = exc.response.get("Error", {}).get("Code")  # type: ignore[union-attr]
+        except Exception:
+            error_code = None
+
+    error_logger.exception(
+        "Storage operation failed",
+        extra={
+            "url": str(request.url),
+            "method": request.method,
+            "error_type": type(exc).__name__,
+            "error_code": error_code,
+        },
+    )
+
+    transient_error_codes = {
+        "SlowDown",
+        "RequestTimeout",
+        "InternalError",
+        "ServiceUnavailable",
+        "Throttling",
+        "RequestLimitExceeded",
+    }
+
+    if error_code in transient_error_codes:
+        status_code = 503
+        detail = "Storage service temporarily unavailable"
+    else:
+        status_code = 500
+        detail = "Storage service error"
+
+    return JSONResponse(
+        status_code=status_code,
+        content={"detail": detail},
+    )
+
+
+app.add_exception_handler(ConnectionFailureError, connection_failure_handler)
+app.add_exception_handler(QueryCanceledError, query_canceled_handler)
+app.add_exception_handler(asyncio.TimeoutError, timeout_error_handler)
+app.add_exception_handler(ClientError, storage_error_handler)
+app.add_exception_handler(EndpointConnectionError, storage_error_handler)
 
 # Include API routers
 app.include_router(users.router, prefix="/v1/users", tags=["users"])

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
 from foreman.api.deps import get_current_user, get_db
 from foreman.audit import AuditEvent, log_audit
 from foreman.db import Database
+from foreman.exceptions import ResourceNotFoundError
 from foreman.logging_config import get_logger
 from foreman.models.user import User
 from foreman.repositories import postgres_generations_repository as gen_repo
@@ -59,10 +60,10 @@ async def get_project(
     db: Database = Depends(get_db),
 ):
     """Get details for a single project."""
-    project = await crud.get_project_by_id(db=db, project_id=project_id, user_id=current_user.id)
-    if not project:
+    try:
+        return await crud.get_project_by_id(db=db, project_id=project_id, user_id=current_user.id)
+    except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Project not found")
-    return project
 
 
 @router.post("/{project_id}/generations", response_model=GenerationRead, status_code=202)
@@ -89,10 +90,11 @@ async def create_generation(
                 raise HTTPException(status_code=400, detail="Parent generation has no output image")
             input_image_url = parent.output_image_url
         else:
-            project = await crud.get_project_by_id(
-                db=db, project_id=project_id, user_id=current_user.id
-            )
-            if not project:
+            try:
+                project = await crud.get_project_by_id(
+                    db=db, project_id=project_id, user_id=current_user.id
+                )
+            except ResourceNotFoundError:
                 raise HTTPException(status_code=404, detail="Project not found")
             if not project.original_image_url:
                 raise HTTPException(status_code=400, detail="Project has no original image")
@@ -126,12 +128,13 @@ async def list_project_generations(
     db: Database = Depends(get_db),
 ):
     """List generations for a single project scoped to the current user."""
-    project = await crud.get_project_by_id(
-        db=db,
-        project_id=project_id,
-        user_id=current_user.id,
-    )
-    if not project:
+    try:
+        await crud.get_project_by_id(
+            db=db,
+            project_id=project_id,
+            user_id=current_user.id,
+        )
+    except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Project not found")
     return await gen_repo.list_generations_by_project(
         db=db,
@@ -157,8 +160,6 @@ async def update_project(
             user_id=current_user.id,
             project_in=project_in,
         )
-        if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
         log_audit(
             AuditEvent.PROJECT_UPDATED,
             str(current_user.id),
@@ -167,8 +168,8 @@ async def update_project(
         )
         logger.info("Project updated", extra={"project_id": str(project_id)})
         return project
-    except HTTPException:
-        raise
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
     except Exception:
         logger.exception("Error updating project")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -182,9 +183,7 @@ async def delete_project(
 ):
     """Delete a project and all its generations."""
     try:
-        success = await crud.delete_project(db=db, project_id=project_id, user_id=current_user.id)
-        if not success:
-            raise HTTPException(status_code=404, detail="Project not found")
+        await crud.delete_project(db=db, project_id=project_id, user_id=current_user.id)
         log_audit(
             AuditEvent.PROJECT_DELETED,
             str(current_user.id),
@@ -192,8 +191,8 @@ async def delete_project(
             resource_type="project",
         )
         logger.info("Project deleted", extra={"project_id": str(project_id)})
-    except HTTPException:
-        raise
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
     except Exception:
         logger.exception("Error deleting project")
         raise HTTPException(status_code=500, detail="Internal server error")
