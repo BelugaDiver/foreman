@@ -47,3 +47,55 @@ class TestMigrationStructure:
         """Each migration should define a down_revision (or None for first)."""
         for module in _get_migration_modules():
             assert hasattr(module, "down_revision"), f"{module.__name__} missing down_revision"
+
+
+class TestMigrationDependencies:
+    """Tests for migration dependency chains."""
+
+    def test_no_gaps_in_revision_chain(self):
+        """Migration revisions should form a continuous chain without gaps."""
+        modules = list(_get_migration_modules())
+
+        # Build map of revision -> module
+        revision_to_module = {m.revision: m for m in modules}
+
+        # Check each migration's down_revision points to existing revision
+        for module in modules:
+            if module.down_revision is not None:
+                assert module.down_revision in revision_to_module, (
+                    f"{module.__name__} has down_revision {module.down_revision} that doesn't exist"
+                )
+
+    def test_no_cycles_in_revision_chain(self):
+        """Migration chain should not contain cycles."""
+        modules = list(_get_migration_modules())
+
+        # Build adjacency list
+        graph = {}
+        for m in modules:
+            graph[m.revision] = m.down_revision
+
+        # Detect cycles using DFS
+        visited = set()
+        rec_stack = set()
+
+        def has_cycle(node):
+            visited.add(node)
+            rec_stack.add(node)
+
+            if graph.get(node):
+                for neighbor in [graph[node]]:
+                    if neighbor is None:
+                        continue
+                    if neighbor not in visited:
+                        if has_cycle(neighbor):
+                            return True
+                    elif neighbor in rec_stack:
+                        return True
+
+            rec_stack.remove(node)
+            return False
+
+        for node in graph:
+            if node not in visited:
+                assert not has_cycle(node), f"Cycle detected starting from {node}"
