@@ -29,6 +29,7 @@ dev = [
     "alembic>=1.18.4",
     "psycopg2-binary>=2.9.11",
     "testcontainers>=4.14.1",
+    "sqlparse>=0.5.0",
 ]
 
 [build-system]
