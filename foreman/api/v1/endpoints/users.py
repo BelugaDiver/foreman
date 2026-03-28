@@ -26,7 +26,7 @@ async def create_user(
         logger.info("User created", extra={"user_id": str(user.id), "email": user.email})
         return user
     except DuplicateResourceError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception:
         logger.exception("Error creating user")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -59,7 +59,7 @@ async def update_user_me(
         )
         return user
     except DuplicateResourceError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception:
         logger.exception("Error updating user")
         raise HTTPException(status_code=500, detail="Internal server error")
