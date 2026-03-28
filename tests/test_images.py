@@ -85,7 +85,6 @@ def mock_dependencies(monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
 
-    from foreman.exceptions import ResourceNotFoundError
 
     async def mock_get_project_by_id(db, project_id, user_id):
         project = projects_db.get(project_id)
@@ -461,3 +460,52 @@ def test_create_upload_intent_invalid_size(client, headers_a, project_a):
     )
 
     assert resp.status_code == 422
+
+
+def test_delete_image_storage_failure_warning(client, headers_a, project_a, monkeypatch, capsys):
+    """DELETE /v1/images/{id} should warn but proceed when storage delete fails."""
+    project_id = project_a["id"]
+
+    create_resp = client.post(
+        f"/v1/projects/{project_id}/images",
+        headers=headers_a,
+        json={"filename": "room.jpg", "content_type": "image/jpeg", "size_bytes": 1024},
+    )
+    image_id = create_resp.json()["image_id"]
+
+    from unittest.mock import AsyncMock
+
+    mock_storage = AsyncMock()
+    mock_storage.delete = AsyncMock(side_effect=Exception("Storage error"))
+    mock_storage.get_download_url = AsyncMock(return_value="https://example.com/download")
+
+    def mock_get_storage():
+        return mock_storage
+
+    monkeypatch.setattr("foreman.api.v1.endpoints.images.get_storage_sync", mock_get_storage)
+
+    resp = client.delete(f"/v1/images/{image_id}", headers=headers_a)
+    assert resp.status_code == 204
+
+
+def test_delete_image_db_failure(client, headers_a, project_a, monkeypatch):
+    """DELETE /v1/images/{id} should return 500 when DB delete fails."""
+    project_id = project_a["id"]
+
+    create_resp = client.post(
+        f"/v1/projects/{project_id}/images",
+        headers=headers_a,
+        json={"filename": "room.jpg", "content_type": "image/jpeg", "size_bytes": 1024},
+    )
+    image_id = create_resp.json()["image_id"]
+
+    async def mock_delete_fail(*args, **kwargs):
+        raise Exception("DB error")
+
+    monkeypatch.setattr(
+        "foreman.api.v1.endpoints.images.crud.delete_image",
+        mock_delete_fail,
+    )
+
+    resp = client.delete(f"/v1/images/{image_id}", headers=headers_a)
+    assert resp.status_code == 500
