@@ -10,7 +10,11 @@ import re
 from pathlib import Path
 
 # Third-party
+import pytest
 import sqlparse
+import subprocess
+import testcontainers.postgres
+from testcontainers.core.container import DockerContainer
 
 
 def _get_migration_modules():
@@ -128,3 +132,58 @@ class TestMigrationSQL:
             for sql in sql_statements:
                 parsed = sqlparse.parse(sql)
                 assert len(parsed) > 0, f"Invalid SQL syntax in {module.__name__} downgrade: {sql}"
+
+
+def _docker_available():
+    """Check if Docker is available."""
+    try:
+        with DockerContainer("postgres:16-alpine") as c:
+            pass
+        return True
+    except Exception:
+        return False
+
+
+class TestMigrationIntegration:
+    """Integration tests that run migrations against a real database."""
+
+    @pytest.fixture
+    def postgres_container(self):
+        """Start a PostgreSQL container for testing."""
+        if not _docker_available():
+            pytest.skip("Docker not available")
+
+        pg = testcontainers.postgres.PostgresContainer("postgres:16-alpine")
+        pg.start()
+        yield pg
+        pg.stop()
+
+    def test_migrations_run_successfully(self, postgres_container):
+        """All migrations should run without errors against a real database."""
+        import os
+
+        url = postgres_container.get_connection_url()
+        env = os.environ.copy()
+        env["DATABASE_URL"] = url
+
+        result = subprocess.run(
+            ["python", "-m", "alembic", "upgrade", "heads"],
+            env=env,
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).parent.parent,
+        )
+
+        assert result.returncode == 0, f"Migrations failed: {result.stderr}"
+
+        expected_tables = ["users", "projects", "generations", "images", "styles"]
+
+        import psycopg2
+
+        url = url.replace("postgresql+psycopg2://", "postgresql://")
+        conn = psycopg2.connect(url)
+        cur = conn.cursor()
+        for table in expected_tables:
+            cur.execute(f"SELECT 1 FROM {table} LIMIT 1")
+        cur.close()
+        conn.close()
