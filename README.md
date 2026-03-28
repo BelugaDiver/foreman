@@ -53,7 +53,7 @@ cp .env.foreman.example .env.foreman.local
 ### Run Migrations
 
 ```bash
-alembic upgrade head
+alembic upgrade heads
 ```
 
 ### Run the App
