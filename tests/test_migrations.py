@@ -4,17 +4,12 @@ from __future__ import annotations
 
 # Stdlib
 import importlib
-import inspect
 import pkgutil
-import re
+import re  # noqa: F401 - needed for Task 4 (SQL syntax tests)
 from pathlib import Path
 
 # Third-party
-import pytest
-import sqlparse
-
-# Local
-import migrations.versions
+import sqlparse  # noqa: F401 - needed for Task 4 (SQL syntax tests)
 
 
 def _get_migration_modules():
