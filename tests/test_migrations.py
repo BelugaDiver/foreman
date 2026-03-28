@@ -7,14 +7,18 @@ import importlib
 import inspect
 import pkgutil
 import re
+import subprocess
 from pathlib import Path
 
 # Third-party
 import pytest
 import sqlparse
-import subprocess
 import testcontainers.postgres
 from testcontainers.core.container import DockerContainer
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 def _get_migration_modules():
@@ -23,6 +27,11 @@ def _get_migration_modules():
     for module_info in pkgutil.iter_modules([str(versions_path)]):
         module = importlib.import_module(f"migrations.versions.{module_info.name}")
         yield module
+
+
+# ---------------------------------------------------------------------------
+# Tests: Migration Structure
+# ---------------------------------------------------------------------------
 
 
 class TestMigrationStructure:
@@ -52,6 +61,11 @@ class TestMigrationStructure:
         """Each migration should define a down_revision (or None for first)."""
         for module in _get_migration_modules():
             assert hasattr(module, "down_revision"), f"{module.__name__} missing down_revision"
+
+
+# ---------------------------------------------------------------------------
+# Tests: Migration Dependencies
+# ---------------------------------------------------------------------------
 
 
 class TestMigrationDependencies:
@@ -106,6 +120,11 @@ class TestMigrationDependencies:
                 assert not has_cycle(node), f"Cycle detected starting from {node}"
 
 
+# ---------------------------------------------------------------------------
+# Tests: Migration SQL
+# ---------------------------------------------------------------------------
+
+
 class TestMigrationSQL:
     """Tests for SQL syntax in migrations."""
 
@@ -134,14 +153,24 @@ class TestMigrationSQL:
                 assert len(parsed) > 0, f"Invalid SQL syntax in {module.__name__} downgrade: {sql}"
 
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
 def _docker_available():
     """Check if Docker is available."""
     try:
-        with DockerContainer("postgres:16-alpine") as c:
+        with DockerContainer("postgres:16-alpine"):
             pass
         return True
     except Exception:
         return False
+
+
+# ---------------------------------------------------------------------------
+# Tests: Migration Integration
+# ---------------------------------------------------------------------------
 
 
 class TestMigrationIntegration:
