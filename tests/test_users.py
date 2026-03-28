@@ -131,8 +131,8 @@ def test_create_user(client):
     assert "id" in data
 
 
-def test_create_user_duplicate_email_returns_400(client):
-    """POST /v1/users/ with a duplicate e-mail should return 400."""
+def test_create_user_duplicate_email_returns_409(client):
+    """POST /v1/users/ with a duplicate e-mail should return 409."""
     # Arrange
     payload = {"email": "dupe@example.com", "full_name": "First"}
     client.post("/v1/users/", json=payload)
@@ -141,7 +141,7 @@ def test_create_user_duplicate_email_returns_400(client):
     response = client.post("/v1/users/", json={"email": "dupe@example.com", "full_name": "Second"})
 
     # Assert
-    assert response.status_code == 400
+    assert response.status_code == 409
 
 
 def test_get_user_me(client):

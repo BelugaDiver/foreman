@@ -121,13 +121,16 @@ async def cancel_generation(
             generation_id=generation_id,
             user_id=current_user.id,
         )
-    except ResourceNotFoundError:
-        raise HTTPException(status_code=404, detail="Generation not found")
 
-    if generation.status not in {"pending", "processing"}:
-        raise InvalidStateError("Generation", str(generation_id), "cancel", "pending or processing")
+        if generation.status not in {"pending", "processing"}:
+            raise InvalidStateError(
+                "Generation",
+                str(generation_id),
+                "cancel",
+                generation.status,
+                "pending or processing",
+            )
 
-    try:
         updated = await repo.update_generation(
             db=db,
             generation_id=generation_id,
@@ -166,13 +169,12 @@ async def retry_generation(
             generation_id=generation_id,
             user_id=current_user.id,
         )
-    except ResourceNotFoundError:
-        raise HTTPException(status_code=404, detail="Generation not found")
 
-    if original.status not in {"failed", "cancelled"}:
-        raise InvalidStateError("Generation", str(generation_id), "retry", "failed or cancelled")
+        if original.status not in {"failed", "cancelled"}:
+            raise InvalidStateError(
+                "Generation", str(generation_id), "retry", original.status, "failed or cancelled"
+            )
 
-    try:
         generation_in = GenerationCreate(
             prompt=original.prompt,
             style_id=original.style_id,
@@ -197,6 +199,8 @@ async def retry_generation(
             extra={"generation_id": str(generation_id), "attempt": generation.attempt},
         )
         return generation
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Generation not found")
     except InvalidStateError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
@@ -217,13 +221,12 @@ async def fork_generation(
             generation_id=generation_id,
             user_id=current_user.id,
         )
-    except ResourceNotFoundError:
-        raise HTTPException(status_code=404, detail="Generation not found")
 
-    if not parent.output_image_url:
-        raise InvalidStateError("Generation", str(generation_id), "fork", "has output image")
+        if not parent.output_image_url:
+            raise InvalidStateError(
+                "Generation", str(generation_id), "fork", "no output", "has output image"
+            )
 
-    try:
         generation_in = GenerationCreate(
             prompt=parent.prompt,
             style_id=parent.style_id,
@@ -247,6 +250,8 @@ async def fork_generation(
             extra={"original_id": str(generation_id), "new_id": str(new_generation.id)},
         )
         return new_generation
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Generation not found")
     except InvalidStateError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:

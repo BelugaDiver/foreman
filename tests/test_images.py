@@ -85,10 +85,12 @@ def mock_dependencies(monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
 
+    from foreman.exceptions import ResourceNotFoundError
+
     async def mock_get_project_by_id(db, project_id, user_id):
         project = projects_db.get(project_id)
         if not project or project.user_id != user_id:
-            return None
+            raise ResourceNotFoundError("Project", str(project_id))
         return project
 
     async def mock_create_project(db, user_id, project_in):

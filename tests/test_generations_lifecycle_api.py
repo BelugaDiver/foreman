@@ -214,7 +214,10 @@ def test_cancel_generation_rejects_terminal_state(client, headers_a):
 
     # Assert
     assert response.status_code == 400
-    assert response.json() == {"detail": "Cannot cancel generation in current status"}
+    assert (
+        response.json()["detail"]
+        == "Cannot cancel Generation in state 'completed'. Valid states: pending or processing"
+    )
 
 
 def test_cancel_generation_not_found_for_other_owner(client, headers_a, headers_b):
@@ -260,7 +263,7 @@ def test_retry_rejects_completed(client, headers_a):
 
     # Assert
     assert response.status_code == 400
-    assert "Can only retry failed or cancelled" in response.json()["detail"]
+    assert "Cannot retry Generation in state" in response.json()["detail"]
 
 
 def test_retry_rejects_pending(client, headers_a):
@@ -316,7 +319,10 @@ def test_fork_generation_requires_output_image(client, headers_a):
 
     # Assert
     assert response.status_code == 400
-    assert response.json() == {"detail": "Cannot fork generation without output image"}
+    assert (
+        response.json()["detail"]
+        == "Cannot fork Generation in state 'no output'. Valid states: has output image"
+    )
 
 
 def test_lifecycle_actions_require_auth(client):
