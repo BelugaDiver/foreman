@@ -37,8 +37,9 @@ async def create_upload_intent(
     storage: StorageProtocol = Depends(get_storage),
 ):
     """Create an upload intent and return a presigned URL for direct upload to object storage."""
-    project = await project_crud.get_project_by_id(db, project_id, current_user.id)
-    if not project:
+    try:
+        project = await project_crud.get_project_by_id(db, project_id, current_user.id)
+    except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Project not found")
 
     logger.info(
