@@ -160,8 +160,6 @@ async def update_project(
             user_id=current_user.id,
             project_in=project_in,
         )
-        if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
         log_audit(
             AuditEvent.PROJECT_UPDATED,
             str(current_user.id),
@@ -170,8 +168,6 @@ async def update_project(
         )
         logger.info("Project updated", extra={"project_id": str(project_id)})
         return project
-    except HTTPException:
-        raise
     except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Project not found")
     except Exception:
@@ -187,9 +183,7 @@ async def delete_project(
 ):
     """Delete a project and all its generations."""
     try:
-        success = await crud.delete_project(db=db, project_id=project_id, user_id=current_user.id)
-        if not success:
-            raise HTTPException(status_code=404, detail="Project not found")
+        await crud.delete_project(db=db, project_id=project_id, user_id=current_user.id)
         log_audit(
             AuditEvent.PROJECT_DELETED,
             str(current_user.id),
@@ -197,8 +191,6 @@ async def delete_project(
             resource_type="project",
         )
         logger.info("Project deleted", extra={"project_id": str(project_id)})
-    except HTTPException:
-        raise
     except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Project not found")
     except Exception:

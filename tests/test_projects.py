@@ -117,7 +117,7 @@ def mock_dependencies(monkeypatch):
     async def mock_update_project(db, project_id, user_id, project_in: ProjectUpdate):
         project = projects_db.get(project_id)
         if not project or project.user_id != user_id:
-            return None
+            raise ResourceNotFoundError("Project", str(project_id))
         for key, value in project_in.model_dump(exclude_unset=True).items():
             setattr(project, key, value)
         project.updated_at = datetime.now(timezone.utc)
@@ -126,9 +126,8 @@ def mock_dependencies(monkeypatch):
     async def mock_delete_project(db, project_id, user_id):
         project = projects_db.get(project_id)
         if not project or project.user_id != user_id:
-            return False
+            raise ResourceNotFoundError("Project", str(project_id))
         del projects_db[project_id]
-        return True
 
     monkeypatch.setattr("foreman.api.v1.endpoints.projects.crud.list_projects", mock_list_projects)
     monkeypatch.setattr(

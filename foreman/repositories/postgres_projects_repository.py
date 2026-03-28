@@ -137,7 +137,7 @@ async def update_project(
     stmt = sql(query, *params)
     record = await db.fetchrow(stmt)
     if not record:
-        return None
+        raise ResourceNotFoundError("Project", str(project_id))
 
     return _parse_project_record(record)
 
@@ -146,8 +146,8 @@ async def delete_project(
     db: Database,
     project_id: uuid.UUID,
     user_id: uuid.UUID,
-) -> bool:
-    """Hard-delete a project row. Returns True if a row was deleted."""
+) -> None:
+    """Hard-delete a project row. Raises if not found."""
     logger.info("Deleting project", extra={"project_id": str(project_id)})
     stmt = sql(
         "DELETE FROM projects WHERE id=$1 AND user_id=$2 RETURNING id",
@@ -155,4 +155,5 @@ async def delete_project(
         user_id,
     )
     record = await db.fetchrow(stmt)
-    return bool(record)
+    if not record:
+        raise ResourceNotFoundError("Project", str(project_id))
