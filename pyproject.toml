@@ -17,7 +17,7 @@ dependencies = [
     "psycopg[binary]>=3.2.10",
     "python-dotenv>=1.2.2",
     "boto3>=1.42.78",
-    "aiobotocore>=3.0.0",
+    "aiobotocore>=3.3.0",
 ]
 
 [project.optional-dependencies]
