@@ -12,21 +12,21 @@ class QueueMessage:
     """Represents a message to be sent to the queue."""
 
     body: dict[str, Any]
-    message_attributes: dict[str, Any] | None = None
+    message_attributes: dict[str, str] | None = None
 
 
 class QueueProtocol(ABC):
     """Abstract queue interface."""
 
     @abstractmethod
-    async def publish(self, message: QueueMessage) -> str:
+    async def publish(self, message: QueueMessage) -> str | None:
         """Publish a message to the queue.
 
         Args:
             message: The message to publish
 
         Returns:
-            The message ID from the queue service
+            The message ID from the queue service, or None if queue is disabled
         """
         pass
 

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
-import aiobotocore.session
+import boto3
+from botocore.config import Config
 
 from foreman.logging_config import get_logger
 from foreman.queue.protocol import QueueMessage, QueueProtocol
@@ -15,28 +17,28 @@ logger = get_logger("foreman.queue.sqs")
 
 
 class SQSQueue(QueueProtocol):
-    """AWS SQS queue implementation."""
+    """AWS SQS queue implementation using boto3."""
 
     def __init__(self, settings: SQSSettings) -> None:
         self._settings = settings
-        self._session = aiobotocore.session.get_session()
+        self._config = Config(retries={"max_attempts": settings.max_retries, "mode": "standard"})
         self._client = None
 
-    async def _get_client(self):
-        """Get or create the SQS client."""
+    def _get_client(self):
+        """Get or create the boto3 SQS client."""
         if self._client is None:
-            ctx = self._session.create_client(
+            self._client = boto3.client(
                 "sqs",
                 region_name=self._settings.region,
                 aws_access_key_id=self._settings.access_key_id,
                 aws_secret_access_key=self._settings.secret_access_key,
+                config=self._config,
             )
-            self._client = await ctx.__aenter__()
         return self._client
 
     async def publish(self, message: QueueMessage) -> str:
-        """Publish a message to the SQS queue."""
-        client = await self._get_client()
+        """Publish a message to the SQS queue (async wrapper around boto3)."""
+        client = self._get_client()
 
         publish_kwargs: dict[str, Any] = {
             "QueueUrl": self._settings.queue_url,
@@ -45,9 +47,12 @@ class SQSQueue(QueueProtocol):
 
         if message.message_attributes:
             publish_kwargs["MessageAttributes"] = {
-                key: {"StringValue": value, "DataType": "String"}
+                key: {"StringValue": str(value), "DataType": "String"}
                 for key, value in message.message_attributes.items()
             }
+
+        if self._settings.visibility_timeout_seconds > 0:
+            publish_kwargs["VisibilityTimeout"] = self._settings.visibility_timeout_seconds
 
         try:
             logger.debug(
@@ -55,7 +60,7 @@ class SQSQueue(QueueProtocol):
                 extra={"queue_url": self._settings.queue_url},
             )
 
-            response = await client.send_message(**publish_kwargs)
+            response = await asyncio.to_thread(client.send_message, **publish_kwargs)
             message_id = response["MessageId"]
 
             logger.info(
@@ -79,7 +84,5 @@ class SQSQueue(QueueProtocol):
             raise
 
     async def close(self) -> None:
-        """Close the SQS client."""
-        if self._client is not None:
-            await self._client.close()
-            self._client = None
+        """Close the SQS client (no-op for boto3)."""
+        self._client = None

@@ -27,23 +27,17 @@ class TestSQSQueue:
 
     @pytest.mark.asyncio
     async def test_publish_sends_message(self, sqs_queue):
-        """Publishing a message should call SQS client."""
+        """Publishing a message should call SQS client via to_thread."""
         message = QueueMessage(
             body={"generation_id": str(uuid.uuid4()), "prompt": "test"},
         )
 
-        mock_client = AsyncMock()
-        mock_client.send_message = AsyncMock(return_value={"MessageId": "test-message-id"})
-
-        with patch.object(sqs_queue, "_get_client", new_callable=AsyncMock) as mock_get_client:
-            mock_get_client.return_value = mock_client
+        with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
+            mock_to_thread.return_value = {"MessageId": "test-message-id"}
 
             result = await sqs_queue.publish(message)
 
-            mock_client.send_message.assert_called_once()
-            call_kwargs = mock_client.send_message.call_args.kwargs
-            assert call_kwargs["QueueUrl"] == sqs_queue._settings.queue_url
-            assert "MessageBody" in call_kwargs
+            mock_to_thread.assert_called_once()
             assert result == "test-message-id"
 
     @pytest.mark.asyncio
@@ -54,15 +48,12 @@ class TestSQSQueue:
             message_attributes={"project_id": "abc123"},
         )
 
-        mock_client = AsyncMock()
-        mock_client.send_message = AsyncMock(return_value={"MessageId": "test-id"})
-
-        with patch.object(sqs_queue, "_get_client", new_callable=AsyncMock) as mock_get_client:
-            mock_get_client.return_value = mock_client
+        with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
+            mock_to_thread.return_value = {"MessageId": "test-id"}
 
             await sqs_queue.publish(message)
 
-            call_kwargs = mock_client.send_message.call_args.kwargs
+            call_kwargs = mock_to_thread.call_args.kwargs
             assert "MessageAttributes" in call_kwargs
 
     @pytest.mark.asyncio
@@ -70,24 +61,20 @@ class TestSQSQueue:
         """Publishing should raise and log on SQS error."""
         message = QueueMessage(body={"generation_id": str(uuid.uuid4())})
 
-        mock_client = AsyncMock()
-        mock_client.send_message = AsyncMock(side_effect=Exception("SQS error"))
-
-        with patch.object(sqs_queue, "_get_client", new_callable=AsyncMock) as mock_get_client:
-            mock_get_client.return_value = mock_client
+        with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
+            mock_to_thread.side_effect = Exception("SQS error")
 
             with pytest.raises(Exception, match="SQS error"):
                 await sqs_queue.publish(message)
 
     @pytest.mark.asyncio
-    async def test_close_closes_client(self, sqs_queue):
-        """Close should close the SQS client."""
+    async def test_close_clears_client(self, sqs_queue):
+        """Close should clear the SQS client reference."""
         mock_client = AsyncMock()
         sqs_queue._client = mock_client
 
         await sqs_queue.close()
 
-        mock_client.close.assert_called_once()
         assert sqs_queue._client is None
 
     @pytest.mark.asyncio

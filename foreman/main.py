@@ -16,6 +16,7 @@ from foreman.api.v1.endpoints import generations, images, projects, styles, user
 from foreman.db import Database, DatabaseSettings
 from foreman.logging_config import configure_logging
 from foreman.middleware.request_logging import RequestLoggingMiddleware
+from foreman.queue import get_queue
 from foreman.repositories import postgres_users_repository as crud
 from foreman.schemas.health_check import HealthCheck
 from foreman.telemetry import instrument_app, setup_telemetry
@@ -58,6 +59,12 @@ async def lifespan(app: FastAPI):
             await database.shutdown()
         except Exception:
             logger.exception("Error while shutting down database")
+        try:
+            queue = get_queue()
+            await queue.close()
+            logger.info("Queue closed")
+        except Exception:
+            logger.exception("Error while shutting down queue")
 
 
 # Create FastAPI app
