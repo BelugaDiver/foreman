@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Foreman - How It Works</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Nunito', sans-serif;
+            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #fff;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+        
+        h1 {
+            font-size: 3em;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+            letter-spacing: -1px;
+        }
+        
+        .tagline {
+            font-size: 1.3em;
+            color: #7f8c8d;
+            font-weight: 600;
+        }
+        
+        .card {
+            background: #2d3436;
+            border-radius: 24px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            border: 3px solid #3d4448;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 6px;
+            background: linear-gradient(90deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3);
+        }
+        
+        .step {
+            display: flex;
+            align-items: center;
+            gap: 25px;
+            padding: 15px 0;
+        }
+        
+        .step-num {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #ff6b6b, #ff9ff3);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 1.4em;
+            flex-shrink: 0;
+            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
+        }
+        
+        .step-content {
+            flex: 1;
+        }
+        
+        .step-title {
+            font-size: 1.3em;
+            font-weight: 700;
+            margin-bottom: 6px;
+            color: #feca57;
+        }
+        
+        .step-desc {
+            color: #b2bec3;
+            font-size: 1em;
+            line-height: 1.6;
+        }
+        
+        .step-arrow {
+            color: #48dbfb;
+            font-size: 1.8em;
+            text-align: center;
+            padding: 5px 0;
+        }
+        
+        .method {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.75em;
+            font-weight: 700;
+            margin-right: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .get { background: #00d2d3; color: #000; }
+        .post { background: #5f27cd; color: #fff; }
+        .patch { background: #ff9f43; color: #000; }
+        .delete { background: #ee5253; color: #fff; }
+        
+        .route {
+            background: #1e272e;
+            padding: 3px 10px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            color: #7bed9f;
+        }
+        
+        .highlight-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 20px;
+            padding: 30px;
+            margin: 40px 0;
+            text-align: center;
+        }
+        
+        .highlight-title {
+            font-size: 1.5em;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        
+        .highlight-desc {
+            color: #dcdde1;
+        }
+        
+        .character-row {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+            margin: 30px 0;
+        }
+        
+        .character {
+            text-align: center;
+        }
+        
+        .character-emoji {
+            font-size: 3em;
+            display: block;
+            margin-bottom: 10px;
+            filter: drop-shadow(0 5px 10px rgba(0,0,0,0.3));
+        }
+        
+        .character-name {
+            font-weight: 700;
+            font-size: 1.1em;
+            color: #feca57;
+        }
+        
+        .character-role {
+            font-size: 0.85em;
+            color: #7f8c8d;
+        }
+        
+        .status-row {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin-top: 15px;
+        }
+        
+        .status {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 0.9em;
+        }
+        
+        .status-pending { background: #feca57; color: #000; }
+        .status-processing { background: #48dbfb; color: #000; }
+        .status-completed { background: #2ed573; color: #000; }
+        .status-failed { background: #ff4757; color: #fff; }
+        
+        .chain-card {
+            background: #1e272e;
+            border-radius: 16px;
+            padding: 25px;
+            margin-top: 20px;
+        }
+        
+        .chain-title {
+            text-align: center;
+            font-size: 1.2em;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: #ff9ff3;
+        }
+        
+        .chain {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .chain-item {
+            background: #2d3436;
+            padding: 15px 20px;
+            border-radius: 12px;
+            text-align: center;
+            border: 2px solid #3d4448;
+            transition: all 0.3s ease;
+        }
+        
+        .chain-item:hover {
+            transform: translateY(-5px);
+            border-color: #ff6b6b;
+        }
+        
+        .chain-item-icon {
+            font-size: 1.8em;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .chain-item-label {
+            font-size: 0.85em;
+            color: #b2bec3;
+        }
+        
+        .chain-arrow {
+            color: #48dbfb;
+            font-size: 1.5em;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #7f8c8d;
+            font-size: 0.95em;
+        }
+        
+        .key {
+            display: flex;
+            justify-content: center;
+            gap: 25px;
+            margin-top: 30px;
+            flex-wrap: wrap;
+        }
+        
+        .key-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .key-badge {
+            padding: 5px 12px;
+            border-radius: 6px;
+            font-size: 0.8em;
+            font-weight: 700;
+        }
+        
+        @media (max-width: 600px) {
+            .step {
+                flex-direction: column;
+                text-align: center;
+            }
+            .chain {
+                flex-direction: column;
+            }
+            .chain-arrow {
+                transform: rotate(90deg);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Foreman</h1>
+            <p class="tagline">🏠 AI-Powered Home Design Generator</p>
+        </header>
+        
+        <!-- Characters -->
+        <div class="character-row">
+            <div class="character">
+                <span class="character-emoji">👤</span>
+                <div class="character-name">You</div>
+                <div class="character-role">Homeowner / Designer</div>
+            </div>
+            <div class="character">
+                <span class="character-emoji">🏠</span>
+                <div class="character-name">Room Photo</div>
+                <div class="character-role">Before Image</div>
+            </div>
+            <div class="character">
+                <span class="character-emoji">✨</span>
+                <div class="character-name">AI Gen</div>
+                <div class="character-role">The Magic</div>
+            </div>
+            <div class="character">
+                <span class="character-emoji">📦</span>
+                <div class="character-name">Foreman</div>
+                <div class="character-role">The Manager</div>
+            </div>
+        </div>
+        
+        <!-- Step by Step -->
+        <div class="card">
+            <div class="step">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                    <div class="step-title">🏗️ Browse Design Styles</div>
+                    <div class="step-desc">
+                        Check out available styles like "Modern", "Industrial", "Scandinavian", "Bohemian" and more!
+                        <br><span class="method get">GET</span> <span class="route">/v1/styles</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="step-arrow">↓</div>
+            
+            <div class="step">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                    <div class="step-title">📁 Create a Project</div>
+                    <div class="step-desc">
+                        Start a new project — name it "Master Bedroom Redesign" or "Kitchen Makeover" to stay organized.
+                        <br><span class="method post">POST</span> <span class="route">/v1/projects</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="step-arrow">↓</div>
+            
+            <div class="step">
+                <div class="step-num">3</div>
+                <div class="step-content">
+                    <div class="step-title">📸 Upload Room Photo</div>
+                    <div class="step-desc">
+                        Upload a photo of your room — living room, kitchen, bedroom, bathroom... any space you want to redesign!
+                        <br><span class="method post">POST</span> <span class="route">/v1/projects/{id}/images</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="step-arrow">↓</div>
+            
+            <div class="step">
+                <div class="step-num">4</div>
+                <div class="step-content">
+                    <div class="step-title">🔗 Set as Project Image</div>
+                    <div class="step-desc">
+                        Link your room photo to the project so Foreman knows which image to work with.
+                        <br><span class="method patch">PATCH</span> <span class="route">/v1/projects/{id}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="step-arrow">↓</div>
+            
+            <div class="step">
+                <div class="step-num">5</div>
+                <div class="step-content">
+                    <div class="step-title">🎨 Request Design Generation</div>
+                    <div class="step-desc">
+                        Tell the AI how to transform your room! Add a prompt like "add a reading nook" or "modernize with minimal furniture" and pick a style.
+                        <br><span class="method post">POST</span> <span class="route">/v1/projects/{id}/generations</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="step-arrow">↓</div>
+            
+            <div class="step">
+                <div class="step-num">6</div>
+                <div class="step-content">
+                    <div class="step-title">⏳ Watch It Transform</div>
+                    <div class="step-desc">
+                        AI is working on your design! Check back to see the progress...
+                        <br>
+                        <div class="status-row">
+                            <span class="status status-pending">queued</span>
+                            <span class="status status-processing">designing</span>
+                            <span class="status status-completed">done ✓</span>
+                            <span class="status status-failed">failed ✗</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="step-arrow">↓</div>
+            
+            <div class="step">
+                <div class="step-num">7</div>
+                <div class="step-content">
+                    <div class="step-title">🔄 Iterate & Improve</div>
+                    <div class="step-desc">
+                        Love it? Fork to create variations. Not quite right? Retry with different prompts or cancel and try again!
+                        <br>
+                        <span class="method post">POST</span> <span class="route">/v1/generations/{id}/fork</span> — Create variations
+                        <br>
+                        <span class="method post">POST</span> <span class="route">/v1/generations/{id}/retry</span> — Try again
+                        <br>
+                        <span class="method post">POST</span> <span class="route">/v1/generations/{id}/cancel</span> — Cancel
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Iteration Chain -->
+        <div class="card">
+            <div class="chain-card">
+                <div class="chain-title">🔄 Design Iteration Loop</div>
+                <div class="chain">
+                    <div class="chain-item">
+                        <span class="chain-item-icon">🏠</span>
+                        <span class="chain-item-label">Original<br><small>Room Photo</small></span>
+                    </div>
+                    <span class="chain-arrow">→</span>
+                    <div class="chain-item">
+                        <span class="chain-item-icon">🎨</span>
+                        <span class="chain-item-label">Design #1<br><small>Modern</small></span>
+                    </div>
+                    <span class="chain-arrow">→</span>
+                    <div class="chain-item">
+                        <span class="chain-item-icon">🍴</span>
+                        <span class="chain-item-label">Fork</span>
+                    </div>
+                    <span class="chain-arrow">→</span>
+                    <div class="chain-item">
+                        <span class="chain-item-icon">🎨</span>
+                        <span class="chain-item-label">Design #2<br><small>Bohemian</small></span>
+                    </div>
+                    <span class="chain-arrow">→</span>
+                    <div class="chain-item">
+                        <span class="chain-item-icon">🔁</span>
+                        <span class="chain-item-label">Retry<br><small>Better!</small></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Key -->
+        <div class="key">
+            <div class="key-item">
+                <span class="method get">GET</span>
+                <span>Retrieve</span>
+            </div>
+            <div class="key-item">
+                <span class="method post">POST</span>
+                <span>Create</span>
+            </div>
+            <div class="key-item">
+                <span class="method patch">PATCH</span>
+                <span>Update</span>
+            </div>
+            <div class="key-item">
+                <span class="method delete">DELETE</span>
+                <span>Remove</span>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>🔒 All requests need <code>X-User-ID</code> header. Your data is yours!</p>
+        </div>
+    </div>
+</body>
+</html>

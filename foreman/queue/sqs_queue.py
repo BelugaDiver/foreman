@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
 import aiobotocore.session
+from botocore.config import Config
 
 from foreman.logging_config import get_logger
 from foreman.queue.protocol import QueueMessage, QueueProtocol
@@ -21,17 +23,24 @@ class SQSQueue(QueueProtocol):
         self._settings = settings
         self._session = aiobotocore.session.get_session()
         self._client = None
+        self._lock = asyncio.Lock()
+        self._config = Config(retries={"max_attempts": settings.max_retries, "mode": "standard"})
 
     async def _get_client(self):
-        """Get or create the SQS client."""
-        if self._client is None:
-            ctx = self._session.create_client(
-                "sqs",
-                region_name=self._settings.region,
-                aws_access_key_id=self._settings.access_key_id,
-                aws_secret_access_key=self._settings.secret_access_key,
-            )
-            self._client = await ctx.__aenter__()
+        """Get or create the SQS client (thread-safe)."""
+        if self._client is not None:
+            return self._client
+
+        async with self._lock:
+            if self._client is None:
+                ctx = self._session.create_client(
+                    "sqs",
+                    region_name=self._settings.region,
+                    aws_access_key_id=self._settings.access_key_id,
+                    aws_secret_access_key=self._settings.secret_access_key,
+                    config=self._config,
+                )
+                self._client = await ctx.__aenter__()
         return self._client
 
     async def publish(self, message: QueueMessage) -> str:
@@ -45,9 +54,12 @@ class SQSQueue(QueueProtocol):
 
         if message.message_attributes:
             publish_kwargs["MessageAttributes"] = {
-                key: {"StringValue": value, "DataType": "String"}
+                key: {"StringValue": str(value), "DataType": "String"}
                 for key, value in message.message_attributes.items()
             }
+
+        if self._settings.visibility_timeout_seconds > 0:
+            publish_kwargs["VisibilityTimeout"] = self._settings.visibility_timeout_seconds
 
         try:
             logger.debug(

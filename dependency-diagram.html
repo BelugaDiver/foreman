@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Foreman - Architecture & Dependencies</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #0d1117;
+            min-height: 100vh;
+            padding: 30px;
+            color: #e6edf3;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2.2em;
+        }
+        
+        h1 span {
+            color: #58a6ff;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #8b949e;
+            margin-bottom: 30px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .section {
+            margin-bottom: 40px;
+        }
+        
+        .section-title {
+            font-size: 1.3em;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #30363d;
+            color: #58a6ff;
+        }
+        
+        .layer {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        
+        .box {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 15px;
+            min-width: 180px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        
+        .box:hover {
+            border-color: #58a6ff;
+            transform: translateY(-3px);
+        }
+        
+        .box-name {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .box-files {
+            font-size: 0.75em;
+            color: #8b949e;
+        }
+        
+        .layer-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 120px;
+            font-weight: bold;
+            font-size: 0.9em;
+            color: #8b949e;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+        }
+        
+        .external-box {
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            border: 2px dashed #a855f7;
+        }
+        
+        .missing-box {
+            background: #2d1f1f;
+            border: 2px dashed #ef4444;
+            position: relative;
+        }
+        
+        .missing-box::after {
+            content: 'MISSING';
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background: #ef4444;
+            color: white;
+            font-size: 0.65em;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        
+        .arrow-section {
+            text-align: center;
+            font-size: 1.5em;
+            color: #484f58;
+            margin: 10px 0;
+        }
+        
+        .dependency-list {
+            background: #161b22;
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid #30363d;
+        }
+        
+        .dep-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid #21262d;
+        }
+        
+        .dep-item:last-child {
+            border-bottom: none;
+        }
+        
+        .dep-from {
+            color: #7ee787;
+            font-family: monospace;
+            font-size: 0.9em;
+            min-width: 200px;
+        }
+        
+        .dep-arrow {
+            color: #8b949e;
+        }
+        
+        .dep-to {
+            color: #79c0ff;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        
+        .dep-desc {
+            color: #8b949e;
+            font-size: 0.85em;
+            margin-top: 3px;
+        }
+        
+        .missing-section {
+            background: #2d1f1f;
+            border: 2px dashed #ef4444;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+        
+        .missing-title {
+            color: #ef4444;
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .missing-item {
+            background: rgba(239, 68, 68, 0.1);
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            border-left: 3px solid #ef4444;
+        }
+        
+        .missing-item-name {
+            font-weight: 600;
+            color: #fca5a5;
+        }
+        
+        .missing-item-desc {
+            color: #b91c1c;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        
+        .legend {
+            display: flex;
+            gap: 25px;
+            justify-content: center;
+            margin-top: 30px;
+            flex-wrap: wrap;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .legend-box {
+            width: 25px;
+            height: 18px;
+            border-radius: 3px;
+        }
+        
+        .legend-built { background: #161b22; border: 1px solid #30363d; }
+        .legend-external { background: linear-gradient(135deg, #1a1a2e, #16213e); border: 2px dashed #a855f7; }
+        .legend-missing { background: #2d1f1f; border: 2px dashed #ef4444; }
+        
+        .flow-diagram {
+            background: #161b22;
+            border-radius: 8px;
+            padding: 25px;
+            border: 1px solid #30363d;
+            margin-top: 20px;
+            overflow-x: auto;
+        }
+        
+        .flow-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+        
+        .flow-box {
+            background: #21262d;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            white-space: nowrap;
+        }
+        
+        .flow-arrow {
+            color: #484f58;
+            font-size: 1.2em;
+        }
+        
+        .tech-badge {
+            display: inline-block;
+            background: #238636;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.7em;
+            margin-right: 5px;
+        }
+        
+        .schema-badge {
+            background: #1f6feb;
+        }
+        
+        .repo-badge {
+            background: #8957e5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Foreman <span>Architecture & Dependencies</span></h1>
+        <p class="subtitle">🏠 AI-Powered Home Design Image Generation System</p>
+        
+        <!-- Architecture Layers -->
+        <div class="section">
+            <h2 class="section-title">📦 Architecture Layers</h2>
+            
+            <div class="layer">
+                <div class="layer-label">EXTERNAL</div>
+                <div class="box external-box">
+                    <div class="box-name">🌐 Gateway/Auth</div>
+                    <div class="box-files">Token validation, X-User-ID injection</div>
+                </div>
+                <div class="box external-box">
+                    <div class="box-name">☁️ Cloud Storage</div>
+                    <div class="box-files">S3/R2 for room photo uploads/designs</div>
+                </div>
+                <div class="box external-box">
+                    <div class="box-name">🏠 AI Design Service</div>
+                    <div class="box-files">Room transformation (Stable Diffusion, etc.)</div>
+                </div>
+            </div>
+            
+            <div class="arrow-section">↓</div>
+            
+            <div class="layer">
+                <div class="layer-label">API</div>
+                <div class="box">
+                    <div class="box-name">users</div>
+                    <div class="box-files">GET /v1/users</div>
+                </div>
+                <div class="box">
+                    <div class="box-name">styles</div>
+                    <div class="box-files">GET /v1/styles</div>
+                </div>
+                <div class="box">
+                    <div class="box-name">projects</div>
+                    <div class="box-files">CRUD + generations</div>
+                </div>
+                <div class="box">
+                    <div class="box-name">generations</div>
+                    <div class="box-files">CRUD + fork/retry/cancel</div>
+                </div>
+                <div class="box">
+                    <div class="box-name">images</div>
+                    <div class="box-files">Upload intent + CRUD</div>
+                </div>
+            </div>
+            
+            <div class="arrow-section">↓</div>
+            
+            <div class="layer">
+                <div class="layer-label">REPOS</div>
+                <div class="box">
+                    <div class="box-name">postgres_users</div>
+                    <div class="box-files">user CRUD</div>
+                </div>
+                <div class="box">
+                    <div class="box-name">postgres_projects</div>
+                    <div class="box-files">project CRUD</div>
+                </div>
+                <div class="box">
+                    <div class="box-name">postgres_generations</div>
+                    <div class="box-files">generation CRUD</div>
+                </div>
+                <div class="box">
+                    <div class="box-name">postgres_images</div>
+                    <div class="box-files">image CRUD</div>
+                </div>
+                <div class="box">
+                    <div class="box-name">postgres_styles</div>
+                    <div class="box-files">style CRUD</div>
+                </div>
+            </div>
+            
+            <div class="arrow-section">↓</div>
+            
+            <div class="layer">
+                <div class="layer-label">MODELS</div>
+                <div class="box">
+                    <div class="box-name">user.py</div>
+                    <div class="box-files">User dataclass</div>
+                </div>
+                <div class="box">
+                    <div class="box-name">project.py</div>
+                    <div class="box-files">Project dataclass</div>
+                </div>
+                <div class="box">
+                    <div class="box-name">generation.py</div>
+                    <div class="box-files">Generation dataclass</div>
+                </div>
+                <div class="box">
+                    <div class="box-name">image.py</div>
+                    <div class="box-files">Image dataclass</div>
+                </div>
+                <div class="box">
+                    <div class="box-name">style.py</div>
+                    <div class="box-files">Style dataclass</div>
+                </div>
+            </div>
+            
+            <div class="arrow-section">↓</div>
+            
+            <div class="layer">
+                <div class="layer-label">DB</div>
+                <div class="box">
+                    <div class="box-name">PostgreSQL</div>
+                    <div class="box-files">asyncpg pool</div>
+                </div>
+                <div class="box">
+                    <div class="box-name">db.py</div>
+                    <div class="box-files">Database, SQLStatement</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Internal Dependencies -->
+        <div class="section">
+            <h2 class="section-title">🔗 Internal Dependencies</h2>
+            
+            <div class="dependency-list">
+                <div class="dep-item">
+                    <div class="dep-from">Endpoints</div>
+                    <div class="dep-arrow">→</div>
+                    <div class="dep-to">Repositories (crud)</div>
+                    <div class="dep-desc">All endpoints import and call repository functions</div>
+                </div>
+                <div class="dep-item">
+                    <div class="dep-from">Endpoints</div>
+                    <div class="dep-arrow">→</div>
+                    <div class="dep-to">Schemas</div>
+                    <div class="dep-desc">Request/response validation via Pydantic</div>
+                </div>
+                <div class="dep-item">
+                    <div class="dep-from">Endpoints</div>
+                    <div class="dep-arrow">→</div>
+                    <div class="dep-to">api/deps.py</div>
+                    <div class="dep-desc">get_current_user, get_db dependencies</div>
+                </div>
+                <div class="dep-item">
+                    <div class="dep-from">Endpoints</div>
+                    <div class="dep-arrow">→</div>
+                    <div class="dep-to">models/*</div>
+                    <div class="dep-desc">Type hints for internal representations</div>
+                </div>
+                <div class="dep-item">
+                    <div class="dep-from">Repositories</div>
+                    <div class="dep-arrow">→</div>
+                    <div class="dep-to">db.py</div>
+                    <div class="dep-desc">Database.execute(), fetch(), fetchrow()</div>
+                </div>
+                <div class="dep-item">
+                    <div class="dep-from">Repositories</div>
+                    <div class="dep-arrow">→</div>
+                    <div class="dep-to">models/*</div>
+                    <div class="dep-desc">Construct model instances from DB records</div>
+                </div>
+                <div class="dep-item">
+                    <div class="dep-from">Repositories</div>
+                    <div class="dep-arrow">→</div>
+                    <div class="dep-to">schemas/*</div>
+                    <div class="dep-desc">Receive schema objects for input validation</div>
+                </div>
+                <div class="dep-item">
+                    <div class="dep-from">main.py</div>
+                    <div class="dep-arrow">→</div>
+                    <div class="dep-to">Endpoints</div>
+                    <div class="dep-desc">Includes all routers with prefixes</div>
+                </div>
+                <div class="dep-item">
+                    <div class="dep-from">main.py</div>
+                    <div class="dep-arrow">→</div>
+                    <div class="dep-to">db.py</div>
+                    <div class="dep-desc">Database initialization and lifecycle</div>
+                </div>
+                <div class="dep-item">
+                    <div class="dep-from">main.py</div>
+                    <div class="dep-arrow">→</div>
+                    <div class="dep-to">telemetry.py</div>
+                    <div class="dep-desc">OpenTelemetry instrumentation</div>
+                </div>
+                <div class="dep-item">
+                    <div class="dep-from">images endpoint</div>
+                    <div class="dep-arrow">→</div>
+                    <div class="dep-to">storage/*</div>
+                    <div class="dep-desc">Presigned URL generation for uploads</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Data Flow -->
+        <div class="section">
+            <h2 class="section-title">🔄 Data Flow (Room Design Request)</h2>
+            
+            <div class="flow-diagram">
+                <div class="flow-row">
+                    <div class="flow-box">👤 Homeowner</div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-box">🏠 POST /projects/{id}/generations</div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-box">projects.py endpoint</div>
+                </div>
+                <div class="flow-row">
+                    <div class="flow-box">Validates project ownership</div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-box">crud.get_project_by_id()</div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-box">postgres_projects_repository</div>
+                </div>
+                <div class="flow-row">
+                    <div class="flow-box">📸 Gets room photo URL</div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-box">Creates generation record</div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-box">status = "pending"</div>
+                </div>
+                <div class="flow-row">
+                    <div class="flow-box">Returns 202 + Location header</div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-box">User polls GET /generations/{id}</div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-box">🏗️ Background worker picks up</div>
+                </div>
+                <div class="flow-row">
+                    <div class="flow-box">Worker calls AI service</div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-box">AI transforms room image</div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-box">Updates status + output_url</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Missing Components -->
+        <div class="missing-section">
+            <h2 class="missing-title">⚠️ Missing / Needed Components</h2>
+            
+            <div class="missing-item">
+                <div class="missing-item-name">🔄 Background Worker / Queue System</div>
+                <div class="missing-item-desc">
+                    Currently, generations are created with status="pending" but there's no worker processing them.
+                    Need Celery, Redis, or similar to poll for pending generations and call external AI service.
+                </div>
+            </div>
+            
+            <div class="missing-item">
+                <div class="missing-item-name">🔗 Webhook Callbacks</div>
+                <div class="missing-item-desc">
+                    No webhook system to notify users when generation status changes.
+                    Need table + endpoint to register webhooks and async worker to POST on completion.
+                </div>
+            </div>
+            
+            <div class="missing-item">
+                <div class="missing-item-name">🤖 AI Design Client</div>
+                <div class="missing-item-desc">
+                    No client/integration for actual room design generation (e.g., Stable Diffusion, DALL-E, Midjourney, ControlNet).
+                    Need an abstraction layer to call external AI APIs and update generation.status/output_image_url.
+                </div>
+            </div>
+            
+            <div class="missing-item">
+                <div class="missing-item-name">📊 Analytics / Metrics Dashboard</div>
+                <div class="missing-item-desc">
+                    No dedicated analytics endpoints. Consider adding /v1/analytics/* for usage stats.
+                </div>
+            </div>
+            
+            <div class="missing-item">
+                <div class="missing-item-name">🔔 Notifications Service</div>
+                <div class="missing-item-desc">
+                    No email/push notification integration for generation completion or failures.
+                </div>
+            </div>
+            
+            <div class="missing-item">
+                <div class="missing-item-name">📝 API Rate Limiting</div>
+                <div class="missing-item-desc">
+                    No rate limiting middleware. Consider adding slowapi or custom Redis-based rate limiting.
+                </div>
+            </div>
+            
+            <div class="missing-item">
+                <div class="missing-item-name">🔐 API Key Management</div>
+                <div class="missing-item-desc">
+                    No API key system for programmatic access. Users currently managed only via gateway X-User-ID.
+                </div>
+            </div>
+        </div>
+        
+        <!-- Database Schema -->
+        <div class="section">
+            <h2 class="section-title">🗄️ Database Tables (Home Design)</h2>
+            
+            <div class="layer">
+                <div class="box">
+                    <div class="box-name">users</div>
+                    <div class="box-files">Homeowners/designers</div>
+                </div>
+                <div class="box">
+                    <div class="box-name">projects</div>
+                    <div class="box-files">"Kitchen Makeover", "Bedroom Reno"</div>
+                </div>
+                <div class="box">
+                    <div class="box-name">generations</div>
+                    <div class="box-files">Room transformations (status, prompt, style)</div>
+                </div>
+                <div class="box">
+                    <div class="box-name">images</div>
+                    <div class="box-files">Room photos, design outputs</div>
+                </div>
+                <div class="box">
+                    <div class="box-name">styles</div>
+                    <div class="box-files">"Modern", "Industrial", "Bohemian"</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Technology Stack -->
+        <div class="section">
+            <h2 class="section-title">🛠️ Technology Stack</h2>
+            
+            <div class="layer">
+                <div class="box">
+                    <div class="box-name"><span class="tech-badge">Framework</span>FastAPI</div>
+                </div>
+                <div class="box">
+                    <div class="box-name"><span class="tech-badge">DB</span>PostgreSQL</div>
+                </div>
+                <div class="box">
+                    <div class="box-name"><span class="tech-badge">Driver</span>asyncpg</div>
+                </div>
+                <div class="box">
+                    <div class="box-name"><span class="tech-badge">ORM</span>Raw SQL</div>
+                </div>
+                <div class="box">
+                    <div class="box-name"><span class="tech-badge">Schema</span>Pydantic v2</div>
+                </div>
+                <div class="box">
+                    <div class="box-name"><span class="tech-badge">Storage</span>S3/R2</div>
+                </div>
+                <div class="box">
+                    <div class="box-name"><span class="tech-badge">Telemetry</span>OpenTelemetry</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-box legend-built"></div>
+                <span>Built / Implemented</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box legend-external"></div>
+                <span>External Service</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box legend-missing"></div>
+                <span>Missing / Needed</span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
