@@ -7,8 +7,8 @@ from functools import lru_cache
 
 from foreman.logging_config import get_logger
 from foreman.queue.protocol import QueueProtocol
-from foreman.queue.sqs_queue import SQSQueue
 from foreman.queue.settings import SQSSettings
+from foreman.queue.sqs_queue import SQSQueue
 
 logger = get_logger("foreman.queue.factory")
 
