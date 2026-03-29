@@ -5,6 +5,7 @@
 # ---------------------------------------------------------------------------
 import uuid
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock
 
 # ---------------------------------------------------------------------------
 # Third-party
@@ -507,3 +508,74 @@ def test_delete_project_internal_error_returns_500(client, headers_a, monkeypatc
     # Assert
     assert resp.status_code == 500
     assert resp.json() == {"detail": "Internal server error"}
+
+
+def test_create_generation_publishes_to_queue(client, headers_a, monkeypatch):
+    """Creating a generation should publish a message to SQS."""
+    from foreman.models.generation import Generation
+    from foreman.queue.protocol import QueueMessage
+    from foreman.schemas.generation import GenerationCreate
+
+    # Set up project with image
+    project_id = uuid.uuid4()
+    projects_db[project_id] = Project(
+        id=project_id,
+        user_id=USER_A_ID,
+        name="Test Project",
+        original_image_url="https://example.com/room.jpg",
+        room_analysis=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=None,
+    )
+
+    # Mock generation repository functions
+    async def mock_get_generation_by_id(db, generation_id, user_id):
+        raise ResourceNotFoundError("Generation", str(generation_id))
+
+    async def mock_create_generation(
+        db, project_id, input_image_url, generation_in: GenerationCreate
+    ):
+        return Generation(
+            id=uuid.uuid4(),
+            project_id=project_id,
+            parent_id=generation_in.parent_id,
+            prompt=generation_in.prompt,
+            style_id=generation_in.style_id,
+            model_used=generation_in.model_used,
+            input_image_url=input_image_url,
+            output_image_url=None,
+            status="pending",
+            attempt=generation_in.attempt or 1,
+            error_message=None,
+            processing_time_ms=None,
+            metadata={},
+            created_at=datetime.now(timezone.utc),
+            updated_at=None,
+        )
+
+    monkeypatch.setattr(
+        "foreman.api.v1.endpoints.projects.gen_repo.get_generation_by_id",
+        mock_get_generation_by_id,
+    )
+    monkeypatch.setattr(
+        "foreman.api.v1.endpoints.projects.gen_repo.create_generation",
+        mock_create_generation,
+    )
+
+    # Mock queue
+    mock_queue = AsyncMock()
+    mock_queue.publish.return_value = "test-message-id"
+    monkeypatch.setattr("foreman.api.v1.endpoints.projects.get_queue", lambda: mock_queue)
+
+    # Create generation
+    resp = client.post(
+        f"/v1/projects/{project_id}/generations",
+        headers=headers_a,
+        json={"prompt": "make it modern", "style_id": str(uuid.uuid4())},
+    )
+
+    assert resp.status_code == 202
+    mock_queue.publish.assert_called_once()
+    call_args = mock_queue.publish.call_args[0][0]
+    assert isinstance(call_args, QueueMessage)
+    assert call_args.body["prompt"] == "make it modern"

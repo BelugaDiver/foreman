@@ -10,6 +10,8 @@ from foreman.db import Database
 from foreman.exceptions import ResourceNotFoundError
 from foreman.logging_config import get_logger
 from foreman.models.user import User
+from foreman.queue.factory import get_queue
+from foreman.queue.protocol import QueueMessage
 from foreman.repositories import postgres_generations_repository as gen_repo
 from foreman.repositories import postgres_projects_repository as crud
 from foreman.schemas.generation import GenerationCreate, GenerationRead
@@ -110,6 +112,36 @@ async def create_generation(
             input_image_url=input_image_url,
             generation_in=generation_in,
         )
+
+        # Publish to SQS queue for background processing
+        try:
+            queue = get_queue()
+            message = QueueMessage(
+                body={
+                    "generation_id": str(generation.id),
+                    "project_id": str(project_id),
+                    "prompt": generation.prompt,
+                    "style_id": str(generation.style_id) if generation.style_id else None,
+                    "input_image_url": generation.input_image_url,
+                    "created_at": generation.created_at.isoformat(),
+                },
+                message_attributes={
+                    "generation_id": str(generation.id),
+                    "user_id": str(current_user.id),
+                },
+            )
+            await queue.publish(message)
+            logger.info(
+                "Generation queued for processing",
+                extra={"generation_id": str(generation.id)},
+            )
+        except Exception:
+            # Log but don't fail - generation is created, can be retried manually
+            logger.exception(
+                "Failed to queue generation for processing",
+                extra={"generation_id": str(generation.id)},
+            )
+
         response.headers["Location"] = f"/v1/generations/{generation.id}"
         return generation
     except HTTPException:
