@@ -64,3 +64,37 @@ class TestSQSQueue:
 
             call_kwargs = mock_client.send_message.call_args.kwargs
             assert "MessageAttributes" in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_publish_handles_exception(self, sqs_queue):
+        """Publishing should raise and log on SQS error."""
+        message = QueueMessage(body={"generation_id": str(uuid.uuid4())})
+
+        mock_client = AsyncMock()
+        mock_client.send_message = AsyncMock(side_effect=Exception("SQS error"))
+
+        with patch.object(sqs_queue, "_get_client", new_callable=AsyncMock) as mock_get_client:
+            mock_get_client.return_value = mock_client
+
+            with pytest.raises(Exception, match="SQS error"):
+                await sqs_queue.publish(message)
+
+    @pytest.mark.asyncio
+    async def test_close_closes_client(self, sqs_queue):
+        """Close should close the SQS client."""
+        mock_client = AsyncMock()
+        sqs_queue._client = mock_client
+
+        await sqs_queue.close()
+
+        mock_client.close.assert_called_once()
+        assert sqs_queue._client is None
+
+    @pytest.mark.asyncio
+    async def test_close_when_client_is_none(self, sqs_queue):
+        """Close should handle None client gracefully."""
+        sqs_queue._client = None
+
+        await sqs_queue.close()
+
+        assert sqs_queue._client is None
