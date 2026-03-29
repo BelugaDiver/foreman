@@ -136,3 +136,22 @@ Enforce bounds with `Query(20, ge=1, le=100)` and `Query(0, ge=0)`.
 6. Ownership — another user's ID gets 404 on get/patch/delete
 7. Unauthenticated — missing header returns 401
 8. Validation — missing required fields return 422
+
+### Test Coverage
+
+- **Aim for 100% code coverage** on new features.
+- Run `pytest --cov=foreman --cov-report=term-missing` to check coverage.
+- New modules require unit tests in `tests/`.
+- Integration with existing endpoints requires added test cases to existing test files.
+
+---
+
+## Environment Variables
+
+All new environment variables must be documented in `.env.foreman.example`.
+
+| Convention | Detail |
+|---|---|
+| **Documentation** | Every new env var must have a comment describing its purpose |
+| **Defaults** | Use sensible defaults in code; mark optional vars with `# optional` |
+| **Secrets** | Never commit actual secrets; use placeholder values like `your_access_key` |
