@@ -51,8 +51,8 @@ class SQSQueue(QueueProtocol):
                 for key, value in message.message_attributes.items()
             }
 
-        if self._settings.visibility_timeout_seconds > 0:
-            publish_kwargs["VisibilityTimeout"] = self._settings.visibility_timeout_seconds
+        if self._settings.delay_seconds > 0:
+            publish_kwargs["DelaySeconds"] = self._settings.delay_seconds
 
         try:
             logger.debug(

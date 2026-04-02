@@ -53,7 +53,7 @@ class SQSSettings:
     access_key_id: Optional[str] = None
     secret_access_key: Optional[str] = None
     max_retries: int = 3
-    visibility_timeout_seconds: int = 300
+    delay_seconds: int = 0
 
     @classmethod
     def from_env(cls) -> SQSSettings:
@@ -63,7 +63,7 @@ class SQSSettings:
             access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
             secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
             max_retries=int(os.getenv("SQS_MAX_RETRIES", "3")),
-            visibility_timeout_seconds=int(os.getenv("SQS_VISIBILITY_TIMEOUT", "300")),
+            delay_seconds=int(os.getenv("SQS_DELAY_SECONDS", "0")),
         )
 
     @property
@@ -522,7 +522,7 @@ AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=your_access_key
 AWS_SECRET_ACCESS_KEY=your_secret_key
 SQS_MAX_RETRIES=3
-SQS_VISIBILITY_TIMEOUT=300
+SQS_DELAY_SECONDS=0
 ```
 
 - [ ] **Step 2: Commit**

@@ -14,7 +14,7 @@ headers {
   X-User-ID: {{userId}}
 }
 
-body:json {
+body {
   {
     "name": "My Project",
     "original_image_url": "https://example.com/image.jpg"
@@ -27,7 +27,7 @@ tests {
   });
 }
 
-script:js {
+script:post-response {
   if (res.status === 201) {
     bru.setEnvVar("projectId", res.body.id);
   }

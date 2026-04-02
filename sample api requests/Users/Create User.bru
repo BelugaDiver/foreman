@@ -13,7 +13,7 @@ headers {
   Content-Type: application/json
 }
 
-body:json {
+body {
   {
     "email": "test@example.com",
     "full_name": "Test User"
@@ -26,7 +26,7 @@ tests {
   });
 }
 
-script:js {
+script:post-response {
   if (res.status === 201) {
     bru.setEnvVar("userId", res.body.id);
   }
