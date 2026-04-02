@@ -178,7 +178,6 @@ async def retry_generation(
         generation_in = GenerationCreate(
             prompt=original.prompt,
             style_id=original.style_id,
-            parent_id=original.parent_id,
             model_used=original.model_used,
             attempt=original.attempt + 1,
         )
@@ -187,6 +186,7 @@ async def retry_generation(
             project_id=original.project_id,
             input_image_url=original.input_image_url,
             generation_in=generation_in,
+            parent_id=original.parent_id,
         )
         log_audit(
             AuditEvent.GENERATION_RETRY,
@@ -230,7 +230,6 @@ async def fork_generation(
         generation_in = GenerationCreate(
             prompt=parent.prompt,
             style_id=parent.style_id,
-            parent_id=parent.id,
             model_used=parent.model_used,
         )
         new_generation = await repo.create_generation(
@@ -238,6 +237,7 @@ async def fork_generation(
             project_id=parent.project_id,
             input_image_url=parent.output_image_url,
             generation_in=generation_in,
+            parent_id=parent.id,
         )
         log_audit(
             AuditEvent.GENERATION_FORK,

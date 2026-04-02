@@ -532,13 +532,16 @@ def test_create_generation_publishes_to_queue(client, headers_a, monkeypatch):
     async def mock_get_generation_by_id(db, generation_id, user_id):
         raise ResourceNotFoundError("Generation", str(generation_id))
 
+    async def mock_get_latest_generation(db, project_id, user_id):
+        return None  # No previous generations
+
     async def mock_create_generation(
-        db, project_id, input_image_url, generation_in: GenerationCreate
+        db, project_id, input_image_url, generation_in: GenerationCreate, parent_id=None
     ):
         return Generation(
             id=uuid.uuid4(),
             project_id=project_id,
-            parent_id=generation_in.parent_id,
+            parent_id=parent_id,
             prompt=generation_in.prompt,
             style_id=generation_in.style_id,
             model_used=generation_in.model_used,
@@ -556,6 +559,10 @@ def test_create_generation_publishes_to_queue(client, headers_a, monkeypatch):
     monkeypatch.setattr(
         "foreman.api.v1.endpoints.projects.gen_repo.get_generation_by_id",
         mock_get_generation_by_id,
+    )
+    monkeypatch.setattr(
+        "foreman.api.v1.endpoints.projects.gen_repo.get_latest_generation",
+        mock_get_latest_generation,
     )
     monkeypatch.setattr(
         "foreman.api.v1.endpoints.projects.gen_repo.create_generation",

@@ -76,7 +76,8 @@ async def create_generation(
     current_user: User = Depends(get_current_user),
     db: Database = Depends(get_db),
 ):
-    """Create a generation for a project using root image or a parent generation."""
+    """Create a generation for a project. If parent_id is provided, uses the parent's output as input.
+    Otherwise, finds the latest generation and chains off it."""
     try:
         if generation_in.parent_id:
             parent = await gen_repo.get_generation_by_id(
@@ -92,25 +93,38 @@ async def create_generation(
                 raise HTTPException(status_code=400, detail="Parent generation has no output image")
             input_image_url = parent.output_image_url
         else:
-            try:
-                project = await crud.get_project_by_id(
-                    db=db, project_id=project_id, user_id=current_user.id
-                )
-            except ResourceNotFoundError:
-                raise HTTPException(status_code=404, detail="Project not found")
-            if not project.original_image_url:
-                raise HTTPException(status_code=400, detail="Project has no original image")
-            input_image_url = project.original_image_url
+            latest = await gen_repo.get_latest_generation(db, project_id, current_user.id)
+            if latest:
+                if not latest.output_image_url:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Latest generation has no output image",
+                    )
+                input_image_url = latest.output_image_url
+                parent_id = latest.id
+            else:
+                try:
+                    project = await crud.get_project_by_id(
+                        db=db, project_id=project_id, user_id=current_user.id
+                    )
+                except ResourceNotFoundError:
+                    raise HTTPException(status_code=404, detail="Project not found")
+                if not project.original_image_url:
+                    raise HTTPException(status_code=400, detail="Project has no original image")
+                input_image_url = project.original_image_url
+                parent_id = None
 
         logger.debug(
             "Creating generation for project",
             extra={"project_id": str(project_id), "user_id": str(current_user.id)},
         )
+        effective_parent_id = generation_in.parent_id if generation_in.parent_id else parent_id
         generation = await gen_repo.create_generation(
             db=db,
             project_id=project_id,
             input_image_url=input_image_url,
             generation_in=generation_in,
+            parent_id=effective_parent_id,
         )
 
         # Publish to SQS queue for background processing

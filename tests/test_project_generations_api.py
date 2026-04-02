@@ -97,14 +97,24 @@ def mock_dependencies(monkeypatch):
             return None
         return generation
 
+    async def mock_get_latest_generation(db, project_id, user_id):
+        project_generations = [
+            g
+            for g in generations_db.values()
+            if g.project_id == project_id and generation_owners.get(g.id) == user_id
+        ]
+        if not project_generations:
+            return None
+        return max(project_generations, key=lambda g: g.created_at)
+
     async def mock_create_generation(
-        db, project_id, input_image_url, generation_in: GenerationCreate
+        db, project_id, input_image_url, generation_in: GenerationCreate, parent_id=None
     ):
         attempt = generation_in.attempt if generation_in.attempt is not None else 1
         generation = Generation(
             id=uuid.uuid4(),
             project_id=project_id,
-            parent_id=generation_in.parent_id,
+            parent_id=parent_id,
             status="pending",
             prompt=generation_in.prompt,
             style_id=generation_in.style_id,
@@ -146,6 +156,10 @@ def mock_dependencies(monkeypatch):
     monkeypatch.setattr(
         "foreman.api.v1.endpoints.projects.gen_repo.get_generation_by_id",
         mock_get_generation_by_id,
+    )
+    monkeypatch.setattr(
+        "foreman.api.v1.endpoints.projects.gen_repo.get_latest_generation",
+        mock_get_latest_generation,
     )
     monkeypatch.setattr(
         "foreman.api.v1.endpoints.projects.gen_repo.create_generation",

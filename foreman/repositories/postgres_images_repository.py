@@ -39,6 +39,43 @@ async def list_images(
     return [Image(**dict(r)) for r in records]
 
 
+async def count_images(
+    db: Database,
+    project_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> int:
+    """Return the count of images for a project."""
+    stmt = sql(
+        "SELECT COUNT(*) as count FROM images WHERE project_id=$1 AND user_id=$2",
+        project_id,
+        user_id,
+    )
+    record = await db.fetchrow(stmt)
+    return record["count"]
+
+
+async def get_first_image(
+    db: Database,
+    project_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> Optional[Image]:
+    """Return the first (oldest) image for a project."""
+    stmt = sql(
+        """
+        SELECT * FROM images
+        WHERE project_id=$1 AND user_id=$2
+        ORDER BY created_at ASC
+        LIMIT 1
+        """,
+        project_id,
+        user_id,
+    )
+    record = await db.fetchrow(stmt)
+    if not record:
+        return None
+    return Image(**dict(record))
+
+
 async def get_image_by_id(
     db: Database,
     image_id: uuid.UUID,

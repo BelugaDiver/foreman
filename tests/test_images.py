@@ -85,7 +85,6 @@ def mock_dependencies(monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
 
-
     async def mock_get_project_by_id(db, project_id, user_id):
         project = projects_db.get(project_id)
         if not project or project.user_id != user_id:
@@ -140,6 +139,23 @@ def mock_dependencies(monkeypatch):
         del images_db[image_id]
         return True
 
+    async def mock_count_images(db, project_id, user_id):
+        return len(
+            [
+                img
+                for img in images_db.values()
+                if img.project_id == project_id and img.user_id == user_id
+            ]
+        )
+
+    async def mock_update_project(db, project_id, user_id, project_in):
+        project = projects_db.get(project_id)
+        if not project or project.user_id != user_id:
+            raise ResourceNotFoundError("Project", str(project_id))
+        if project_in.original_image_url:
+            project.original_image_url = project_in.original_image_url
+        return project
+
     mock_storage = AsyncMock()
     mock_storage.create_upload_url = AsyncMock(
         return_value=MagicMock(
@@ -166,6 +182,10 @@ def mock_dependencies(monkeypatch):
     )
     monkeypatch.setattr("foreman.api.v1.endpoints.images.crud.create_image", mock_create_image)
     monkeypatch.setattr("foreman.api.v1.endpoints.images.crud.delete_image", mock_delete_image)
+    monkeypatch.setattr("foreman.api.v1.endpoints.images.crud.count_images", mock_count_images)
+    monkeypatch.setattr(
+        "foreman.api.v1.endpoints.images.project_crud.update_project", mock_update_project
+    )
     monkeypatch.setattr("foreman.api.v1.endpoints.images.get_storage_sync", mock_get_storage)
 
     yield

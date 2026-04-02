@@ -88,7 +88,7 @@ def mock_dependencies(monkeypatch):
         return generation
 
     async def mock_create_generation(
-        db, project_id, input_image_url, generation_in: GenerationCreate
+        db, project_id, input_image_url, generation_in: GenerationCreate, parent_id=None
     ):
         if project_id not in project_owners:
             raise RuntimeError("Missing project owner mapping")
@@ -96,7 +96,7 @@ def mock_dependencies(monkeypatch):
         generation = Generation(
             id=uuid.uuid4(),
             project_id=project_id,
-            parent_id=generation_in.parent_id,
+            parent_id=parent_id,
             status="pending",
             prompt=generation_in.prompt,
             style_id=generation_in.style_id,

@@ -31,6 +31,7 @@ async def create_generation(
     project_id: uuid.UUID,
     input_image_url: str,
     generation_in: GenerationCreate,
+    parent_id: uuid.UUID | None = None,
 ) -> Generation:
     """Insert a new generation row and return it."""
     logger.info("Creating generation", extra={"project_id": str(project_id)})
@@ -44,7 +45,7 @@ async def create_generation(
         RETURNING *
         """,
         project_id,
-        generation_in.parent_id,
+        parent_id,
         generation_in.prompt,
         generation_in.style_id,
         generation_in.model_used,
@@ -79,6 +80,30 @@ async def get_generation_by_id(
     record = await db.fetchrow(stmt)
     if not record:
         raise ResourceNotFoundError("Generation", str(generation_id))
+    return _parse_generation_record(record)
+
+
+async def get_latest_generation(
+    db: Database,
+    project_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> Generation | None:
+    """Get the most recent generation for a project."""
+    stmt = sql(
+        """
+        SELECT g.*
+        FROM generations g
+        JOIN projects p ON g.project_id = p.id
+        WHERE g.project_id=$1 AND p.user_id=$2
+        ORDER BY g.created_at DESC
+        LIMIT 1
+        """,
+        project_id,
+        user_id,
+    )
+    record = await db.fetchrow(stmt)
+    if not record:
+        return None
     return _parse_generation_record(record)
 
 

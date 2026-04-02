@@ -13,6 +13,7 @@ from foreman.models.user import User
 from foreman.repositories import postgres_images_repository as crud
 from foreman.repositories import postgres_projects_repository as project_crud
 from foreman.schemas.image import ImageCreate, ImageRead, ImageUploadIntent, ImageUploadRequest
+from foreman.schemas.project import ProjectUpdate
 from foreman.storage import StorageProtocol, get_storage_sync
 
 router = APIRouter()
@@ -74,6 +75,26 @@ async def create_upload_intent(
             },
         )
         raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+    # If this is the only image for the project, set it as the project's original_image_url
+    image_count = await crud.count_images(db, project_id, current_user.id)
+    if image_count == 1 and image.url:
+        try:
+            await project_crud.update_project(
+                db,
+                project_id=project_id,
+                user_id=current_user.id,
+                project_in=ProjectUpdate(original_image_url=image.url),
+            )
+            logger.info(
+                "Set project original_image_url from first upload",
+                extra={"project_id": str(project_id), "image_id": str(image.id)},
+            )
+        except Exception:
+            logger.warning(
+                "Failed to update project original_image_url",
+                extra={"project_id": str(project_id), "image_id": str(image.id)},
+            )
 
     logger.info(
         "Upload intent created",
