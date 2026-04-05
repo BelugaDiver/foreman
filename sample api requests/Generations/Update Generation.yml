@@ -1,0 +1,22 @@
+info:
+  name: Update Generation
+  type: http
+http:
+  method: PATCH
+  url: "{{baseUrl}}/v1/generations/{{generationId}}"
+  headers:
+    - name: X-User-ID
+      value: "{{userId}}"
+  body:
+    type: json
+    data: |-
+      {
+        "status": "processing"
+      }
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("should return 200", function() {
+          expect(res.status).to.equal(200);
+        });

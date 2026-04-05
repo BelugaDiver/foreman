@@ -1,0 +1,29 @@
+info:
+  name: Create Project
+  type: http
+  seq: 1
+http:
+  method: POST
+  url: "{{baseUrl}}/v1/projects"
+  headers:
+    - name: X-User-ID
+      value: "{{userId}}"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "My Project",
+        "original_image_url": "https://example.com/image.jpg"
+      }
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("should return 201", function() {
+          expect(res.status).to.equal(201);
+        });
+    - type: after-response
+      code: |-
+        if (res.status === 201) {
+          bru.setEnvVar("projectId", res.body.id);
+        }

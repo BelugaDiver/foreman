@@ -1,0 +1,16 @@
+info:
+  name: Get Me
+  type: http
+http:
+  method: GET
+  url: "{{baseUrl}}/v1/users/me"
+  headers:
+    - name: X-User-ID
+      value: "{{userId}}"
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("should return 200", function() {
+          expect(res.status).to.equal(200);
+        });

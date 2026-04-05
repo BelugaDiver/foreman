@@ -1,0 +1,41 @@
+info:
+  name: Create Upload Intent
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v1/projects/{{projectId}}/images"
+  headers:
+    - name: X-User-ID
+      value: "{{userId}}"
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "filename": "Sample Image.jpeg",
+        "content_type": "image/jpeg",
+        "size_bytes": 500000
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.status === 201) {
+          bru.setEnvVar("uploadUrl", res.body.upload_url);
+          bru.setEnvVar("imageId", res.body.image_id);
+        }
+    - type: tests
+      code: |-
+        test("should return 201", function() {
+          expect(res.status).to.equal(201);
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

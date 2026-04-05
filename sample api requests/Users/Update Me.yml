@@ -1,0 +1,22 @@
+info:
+  name: Update Me
+  type: http
+http:
+  method: PATCH
+  url: "{{baseUrl}}/v1/users/me"
+  headers:
+    - name: X-User-ID
+      value: "{{userId}}"
+  body:
+    type: json
+    data: |-
+      {
+        "full_name": "Updated Name"
+      }
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("should return 200", function() {
+          expect(res.status).to.equal(200);
+        });

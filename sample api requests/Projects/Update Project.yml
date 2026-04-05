@@ -1,0 +1,22 @@
+info:
+  name: Update Project
+  type: http
+http:
+  method: PATCH
+  url: "{{baseUrl}}/v1/projects/{{projectId}}"
+  headers:
+    - name: X-User-ID
+      value: "{{userId}}"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Updated Project Name"
+      }
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("should return 200", function() {
+          expect(res.status).to.equal(200);
+        });

@@ -1,0 +1,15 @@
+opencollection: "1.0.0"
+
+info:
+  name: Foreman API
+  summary: API collection for Foreman, a tool for managing and automating the deployment of machine learning models. This collection includes endpoints for generating images, managing generations, and handling user interactions with the Foreman system.
+  version: "1.0.0"
+
+config:
+  environments: []
+
+items: []
+
+request: {}
+
+docs: Documentation for this collection

@@ -1,0 +1,21 @@
+info:
+  name: Retry Generation
+  type: http
+http:
+  method: POST
+  url: "{{baseUrl}}/v1/generations/{{generationId}}/retry"
+  headers:
+    - name: X-User-ID
+      value: "{{userId}}"
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("should return 201", function() {
+          expect(res.status).to.equal(201);
+        });
+    - type: after-response
+      code: |-
+        if (res.status === 201) {
+          bru.setEnvVar("generationId", res.body.id);
+        }
