@@ -13,9 +13,8 @@ from opentelemetry import trace
 from foreman.db import Database
 from foreman.repositories import postgres_generations_repository as gen_repo
 from foreman.schemas.generation import GenerationUpdate
-
-from worker.consumer import GenerationJob
 from worker.config import WorkerConfig
+from worker.consumer import GenerationJob
 
 logger = logging.getLogger("worker.processor")
 

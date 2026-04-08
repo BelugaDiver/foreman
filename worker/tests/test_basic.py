@@ -1,6 +1,5 @@
 """Basic worker tests."""
 
-import pytest
 
 
 def test_worker_config():

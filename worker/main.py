@@ -7,12 +7,11 @@ import signal
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from uvicorn import Server, Config
+from uvicorn import Config, Server
 
 from foreman.db import Database
 from foreman.queue.settings import SQSSettings
 from foreman.telemetry import setup_telemetry
-
 from worker.config import get_worker_config
 from worker.consumer import SQSConsumer
 from worker.processor import JobProcessor
