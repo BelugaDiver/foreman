@@ -5,7 +5,7 @@ import uuid
 import httpx
 import pytest
 
-from tests.integration.conftest import (
+from tests.foreman.integration.conftest import (
     create_generation_via_api,
     create_project_via_api,
     create_user_via_api,

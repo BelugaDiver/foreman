@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from tests.integration.conftest import create_user_via_api
+from tests.foreman.integration.conftest import create_user_via_api
 
 
 @pytest.mark.asyncio
