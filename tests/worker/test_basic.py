@@ -3,65 +3,70 @@
 import asyncio
 import sys
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi.testclient import TestClient
+
+# Save original modules before any mocking
+_original_modules = sys.modules.copy()
 
 
-# Mock external dependencies before importing worker modules
-mock_modules = {
-    "google": MagicMock(),
-    "google.genai": MagicMock(),
-    "google.genai.types": MagicMock(),
-    "boto3": MagicMock(),
-    "botocore": MagicMock(),
-    "botocore.config": MagicMock(),
-    "opentelemetry": MagicMock(),
-    "opentelemetry.trace": MagicMock(),
-}
+def setup_module(module):
+    """Set up mocks before worker tests."""
+    mock_modules = {
+        "google": MagicMock(),
+        "google.genai": MagicMock(),
+        "google.genai.types": MagicMock(),
+        "boto3": MagicMock(),
+        "botocore": MagicMock(),
+        "botocore.config": MagicMock(),
+        "opentelemetry": MagicMock(),
+        "opentelemetry.trace": MagicMock(),
+    }
 
-for module_name, mock_module in mock_modules.items():
-    sys.modules[module_name] = mock_module
+    for module_name, mock_module in mock_modules.items():
+        sys.modules[module_name] = mock_module
 
-# Now mock the foreman modules
-sys.modules["foreman"] = MagicMock()
-sys.modules["foreman.db"] = MagicMock()
-sys.modules["foreman.logging_config"] = MagicMock()
-sys.modules["foreman.logging_config.get_logger"] = MagicMock(return_value=MagicMock())
-sys.modules["foreman.logging_config.configure_logging"] = MagicMock()
-sys.modules["foreman.queue"] = MagicMock()
-sys.modules["foreman.queue.settings"] = MagicMock()
-sys.modules["foreman.telemetry"] = MagicMock()
-sys.modules["foreman.telemetry.setup_telemetry"] = MagicMock()
-sys.modules["foreman.repositories"] = MagicMock()
-sys.modules["foreman.repositories.postgres_generations_repository"] = MagicMock()
-sys.modules["foreman.schemas"] = MagicMock()
-sys.modules["foreman.schemas.generation"] = MagicMock()
+    sys.modules["foreman"] = MagicMock()
+    sys.modules["foreman.db"] = MagicMock()
+    sys.modules["foreman.logging_config"] = MagicMock()
+    sys.modules["foreman.logging_config.get_logger"] = MagicMock(return_value=MagicMock())
+    sys.modules["foreman.logging_config.configure_logging"] = MagicMock()
+    sys.modules["foreman.queue"] = MagicMock()
+    sys.modules["foreman.queue.settings"] = MagicMock()
+    sys.modules["foreman.telemetry"] = MagicMock()
+    sys.modules["foreman.telemetry.setup_telemetry"] = MagicMock()
+    sys.modules["foreman.repositories"] = MagicMock()
+    sys.modules["foreman.repositories.postgres_generations_repository"] = MagicMock()
+    sys.modules["foreman.schemas"] = MagicMock()
+    sys.modules["foreman.schemas.generation"] = MagicMock()
 
+    mock_genai = MagicMock()
+    mock_types = MagicMock()
+    sys.modules["google"].genai = mock_genai
+    sys.modules["google.genai"].types = mock_types
+    sys.modules["google.genai.types"].Modality = MagicMock()
+    sys.modules["google.genai.types"].Part = MagicMock()
 
-# Create mock types for google.genai
-mock_genai = MagicMock()
-mock_types = MagicMock()
-sys.modules["google"].genai = mock_genai
-sys.modules["google.genai"].types = mock_types
-sys.modules["google.genai.types"].Modality = MagicMock()
-sys.modules["google.genai.types"].Part = MagicMock()
+    mock_boto3 = MagicMock()
+    sys.modules["boto3"].client = MagicMock(return_value=MagicMock())
+    sys.modules["boto3"] = mock_boto3
 
-# Create mock boto3
-mock_boto3 = MagicMock()
-sys.modules["boto3"].client = MagicMock(return_value=MagicMock())
-sys.modules["boto3"] = mock_boto3
-
-# Create mock opentelemetry
-mock_otel = MagicMock()
-mock_trace = MagicMock()
-mock_otel.trace.get_tracer = MagicMock(return_value=MagicMock())
-sys.modules["opentelemetry"] = mock_otel
-sys.modules["opentelemetry.trace"] = mock_trace
+    mock_otel = MagicMock()
+    mock_trace = MagicMock()
+    mock_otel.trace.get_tracer = MagicMock(return_value=MagicMock())
+    sys.modules["opentelemetry"] = mock_otel
+    sys.modules["opentelemetry.trace"] = mock_trace
 
 
-# Now we can import the worker modules
+def teardown_module(module):
+    """Clean up mocks after worker tests."""
+    # Restore original modules
+    sys.modules.clear()
+    sys.modules.update(_original_modules)
+
+
+# Now import the worker modules after mocks are set up
 from worker.agent import AgentGraph, AgentResult
 from worker.config import WorkerConfig, get_worker_config
 from worker.consumer import GenerationJob, MalformedSQSMessageError, SQSConsumer
@@ -211,7 +216,6 @@ def test_generation_job_from_message_missing_required():
     body = {
         "generation_id": "gen-123",
         "prompt": "make it modern",
-        # missing project_id, input_image_url, created_at
     }
 
     with pytest.raises(MalformedSQSMessageError) as excinfo:
@@ -226,7 +230,7 @@ def test_generation_job_from_message_empty_string():
     """Test empty string is treated as missing."""
     body = {
         "generation_id": "gen-123",
-        "project_id": "",  # empty string
+        "project_id": "",
         "prompt": "make it modern",
         "input_image_url": "https://example.com/input.jpg",
         "created_at": "2026-04-07T12:00:00Z",
@@ -266,13 +270,11 @@ async def test_sqs_consumer_start_stop():
         max_retries=3,
     )
 
-    # Start in background
     task = asyncio.create_task(consumer.start())
     await asyncio.sleep(0.1)
 
     assert consumer.is_ready() is True
 
-    # Stop
     await consumer.stop(timeout=1.0)
     await task
 
@@ -290,7 +292,6 @@ async def test_sqs_consumer_handles_gracefully():
         max_retries=3,
     )
 
-    # Start and immediately stop - should not raise
     task = asyncio.create_task(consumer.start())
     await asyncio.sleep(0.05)
     await consumer.stop(timeout=1.0)
