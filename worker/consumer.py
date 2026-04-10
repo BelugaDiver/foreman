@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import os
 from dataclasses import dataclass
 from typing import Callable
@@ -12,7 +11,13 @@ from typing import Callable
 import boto3
 from botocore.config import Config
 
-logger = logging.getLogger("worker.consumer")
+from foreman.logging_config import get_logger
+
+logger = get_logger("worker.consumer")
+
+
+class MalformedSQSMessageError(Exception):
+    """Raised when an SQS message is missing critical fields or is malformed."""
 
 
 @dataclass
@@ -25,17 +30,39 @@ class GenerationJob:
     style_id: str | None
     input_image_url: str
     created_at: str
+    user_id: str | None
     retry_count: int = 0
 
     @classmethod
-    def from_message(cls, body: dict) -> "GenerationJob":
+    def from_message(cls, body: dict, message_attributes: dict | None = None) -> "GenerationJob":
+        """Construct a GenerationJob with validation of critical fields."""
+        generation_id = body.get("generation_id")
+        project_id = body.get("project_id")
+        prompt = body.get("prompt")
+        input_image_url = body.get("input_image_url")
+        created_at = body.get("created_at")
+
+        if not all([generation_id, project_id, prompt, input_image_url, created_at]):
+            missing = [
+                k
+                for k in ["generation_id", "project_id", "prompt", "input_image_url", "created_at"]
+                if not body.get(k)
+            ]
+            raise MalformedSQSMessageError(f"Missing critical fields: {', '.join(missing)}")
+
+        user_id = None
+        if message_attributes:
+            user_id_attr = message_attributes.get("user_id", {})
+            user_id = user_id_attr.get("StringValue")
+
         return cls(
-            generation_id=body["generation_id"],
-            project_id=body["project_id"],
-            prompt=body["prompt"],
+            generation_id=generation_id,
+            project_id=project_id,
+            prompt=prompt,
             style_id=body.get("style_id"),
-            input_image_url=body["input_image_url"],
-            created_at=body["created_at"],
+            input_image_url=input_image_url,
+            created_at=created_at,
+            user_id=user_id,
             retry_count=body.get("retry_count", 0),
         )
 
@@ -83,6 +110,7 @@ class SQSConsumer:
             WaitTimeSeconds=10,
             VisibilityTimeout=300,
             AttributeNames=["ApproximateReceiveCount"],
+            MessageAttributeNames=["All"],
         )
 
         messages = response.get("Messages", [])
@@ -101,14 +129,19 @@ class SQSConsumer:
             client = self._get_client()
             try:
                 body = json.loads(msg["Body"])
-                job = GenerationJob.from_message(body)
+                message_attributes = msg.get("MessageAttributes")
+                job = GenerationJob.from_message(body, message_attributes)
 
                 receive_count = int(msg.get("Attributes", {}).get("ApproximateReceiveCount", 1))
                 actual_retry = max(0, receive_count - 1)
 
                 logger.info(
                     "Received job",
-                    extra={"generation_id": job.generation_id, "retry": actual_retry},
+                    extra={
+                        "generation_id": job.generation_id,
+                        "retry": actual_retry,
+                        "user_id": job.user_id,
+                    },
                 )
 
                 await self.process_fn(job, retry_count=actual_retry)
@@ -120,13 +153,26 @@ class SQSConsumer:
                 )
                 logger.info("Job completed", extra={"generation_id": job.generation_id})
 
+            except (json.JSONDecodeError, MalformedSQSMessageError) as exc:
+                logger.error("Unrecoverable malformed message", extra={"error": str(exc)})
+                # Delete immediately - cannot be processed even with retries
+                await asyncio.to_thread(
+                    client.delete_message,
+                    QueueUrl=self.queue_url,
+                    ReceiptHandle=msg["ReceiptHandle"],
+                )
+
             except Exception:
                 logger.exception("Failed to process message", extra={"retry": retry_count})
 
                 if retry_count >= self.max_retries:
                     logger.error(
                         "Max retries exceeded, discarding message",
-                        extra={"generation_id": job.generation_id},
+                        extra={
+                            "generation_id": body.get("generation_id")
+                            if "body" in locals()
+                            else "unknown"
+                        },
                     )
                     await asyncio.to_thread(
                         client.delete_message,

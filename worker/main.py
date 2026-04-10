@@ -1,7 +1,6 @@
 """Worker entry point."""
 
 import asyncio
-import logging
 import os
 import signal
 
@@ -10,6 +9,7 @@ from fastapi.responses import JSONResponse
 from uvicorn import Config, Server
 
 from foreman.db import Database
+from foreman.logging_config import configure_logging, get_logger
 from foreman.queue.settings import SQSSettings
 from foreman.telemetry import setup_telemetry
 from worker.config import get_worker_config
@@ -17,11 +17,7 @@ from worker.consumer import SQSConsumer
 from worker.processor import JobProcessor
 from worker.providers import get_provider
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger("worker.main")
+logger = get_logger("worker.main")
 
 health_app = FastAPI(title="worker-health")
 
@@ -49,6 +45,9 @@ async def ready():
 
 async def main():
     global _db_instance
+
+    # Initialize logging centrally
+    configure_logging()
 
     setup_telemetry(
         service_name="foreman-worker",

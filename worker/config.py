@@ -37,9 +37,9 @@ class WorkerConfig:
     )
 
     r2_bucket: str = field(default_factory=lambda: os.getenv("R2_BUCKET", "foreman-assets"))
+    r2_account_id: str = field(default_factory=lambda: os.getenv("R2_ACCOUNT_ID", ""))
     r2_endpoint: str = field(default_factory=lambda: os.getenv("R2_ENDPOINT", ""))
     r2_access_key_id: str = field(default_factory=lambda: os.getenv("R2_ACCESS_KEY_ID", ""))
-    r2_secret_access_key: str = field(default_factory=lambda: os.getenv("R2_SECRET_ACCESS_KEY", ""))
 
     @classmethod
     def from_env(cls) -> "WorkerConfig":

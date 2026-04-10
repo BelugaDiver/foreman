@@ -122,6 +122,7 @@ def sample_job():
         style_id="modern",
         input_image_url="https://example.com/input.jpg",
         created_at="2026-04-07T12:00:00Z",
+        user_id="user-123",
         retry_count=0,
     )
 
@@ -186,12 +187,16 @@ def test_generation_job_from_message_valid():
         "input_image_url": "https://example.com/input.jpg",
         "created_at": "2026-04-07T12:00:00Z",
     }
+    message_attrs = {
+        "user_id": {"StringValue": "user-123", "DataType": "String"},
+    }
 
-    job = GenerationJob.from_message(body)
+    job = GenerationJob.from_message(body, message_attrs)
     assert job.generation_id == "gen-123"
     assert job.project_id == "proj-456"
     assert job.prompt == "make it modern"
     assert job.style_id is None
+    assert job.user_id == "user-123"
 
 
 def test_generation_job_from_message_with_optional_fields():
@@ -205,10 +210,28 @@ def test_generation_job_from_message_with_optional_fields():
         "created_at": "2026-04-07T12:00:00Z",
         "retry_count": 2,
     }
+    message_attrs = {
+        "user_id": {"StringValue": "user-456", "DataType": "String"},
+    }
 
-    job = GenerationJob.from_message(body)
+    job = GenerationJob.from_message(body, message_attrs)
     assert job.style_id == "modern"
     assert job.retry_count == 2
+    assert job.user_id == "user-456"
+
+
+def test_generation_job_from_message_no_user_id():
+    """Test parsing without message attributes."""
+    body = {
+        "generation_id": "gen-123",
+        "project_id": "proj-456",
+        "prompt": "make it modern",
+        "input_image_url": "https://example.com/input.jpg",
+        "created_at": "2026-04-07T12:00:00Z",
+    }
+
+    job = GenerationJob.from_message(body)
+    assert job.user_id is None
 
 
 def test_generation_job_from_message_missing_required():
@@ -217,9 +240,12 @@ def test_generation_job_from_message_missing_required():
         "generation_id": "gen-123",
         "prompt": "make it modern",
     }
+    message_attrs = {
+        "user_id": {"StringValue": "user-123", "DataType": "String"},
+    }
 
     with pytest.raises(MalformedSQSMessageError) as excinfo:
-        GenerationJob.from_message(body)
+        GenerationJob.from_message(body, message_attrs)
 
     assert "project_id" in str(excinfo.value)
     assert "input_image_url" in str(excinfo.value)

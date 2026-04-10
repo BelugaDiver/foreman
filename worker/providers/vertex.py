@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 import urllib.request
 from dataclasses import dataclass
@@ -11,7 +10,9 @@ from dataclasses import dataclass
 from google import genai
 from google.genai import types
 
-logger = logging.getLogger("worker.providers.vertex")
+from foreman.logging_config import get_logger
+
+logger = get_logger("worker.providers.vertex")
 
 
 @dataclass

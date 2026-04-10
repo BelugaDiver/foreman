@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
-import logging
+import os
 import time
 import uuid
 from dataclasses import dataclass
 from uuid import UUID
 
+import boto3
+from botocore.config import Config as BotoConfig
 from opentelemetry import trace
 
 from foreman.db import Database
+from foreman.logging_config import get_logger
 from foreman.repositories import postgres_generations_repository as gen_repo
 from foreman.schemas.generation import GenerationUpdate
 from worker.config import WorkerConfig
 from worker.consumer import GenerationJob
 
-logger = logging.getLogger("worker.processor")
+logger = get_logger("worker.processor")
 
 tracer = trace.get_tracer(__name__)
 
@@ -58,12 +61,18 @@ class JobProcessor:
             span.set_attribute("retry_count", retry_count)
 
             try:
-                gen = await gen_repo.get_generation(
+                # Validate user_id from SQS message matches generation's owner
+                if not job.user_id:
+                    raise ValueError("No user_id in job message")
+
+                job_user_id = UUID(job.user_id)
+
+                # Fetch generation to verify ownership and get any additional data
+                gen = await gen_repo.get_generation_by_id(
                     self.db,
                     UUID(job.generation_id),
+                    job_user_id,
                 )
-                if not gen:
-                    raise ValueError(f"Generation {job.generation_id} not found")
                 user_id = gen.user_id
 
                 await self._update_status(job.generation_id, user_id, "processing")
@@ -103,11 +112,17 @@ class JobProcessor:
                 span.record_exception(exc)
                 span.set_status(trace.StatusCode.ERROR, str(exc))
 
-                try:
-                    gen = await gen_repo.get_generation(self.db, UUID(job.generation_id))
-                    user_id = gen.user_id if gen else None
-                except Exception:
-                    user_id = None
+                user_id = None
+                if job.user_id:
+                    try:
+                        gen = await gen_repo.get_generation_by_id(
+                            self.db,
+                            UUID(job.generation_id),
+                            UUID(job.user_id),
+                        )
+                        user_id = gen.user_id
+                    except Exception:
+                        pass
 
                 await self._update_status(
                     job.generation_id,
@@ -144,14 +159,18 @@ class JobProcessor:
 
     async def _upload_to_storage(self, local_path: str) -> str:
         """Upload generated image to R2 storage and return public URL."""
-        import boto3
-        from botocore.config import Config as BotoConfig
-
         filename = f"generations/{uuid.uuid4()}.png"
+
+        # Robust endpoint handling
+        endpoint_url = self.config.r2_endpoint
+        if not endpoint_url:
+            if not self.config.r2_account_id:
+                raise ValueError("Neither R2_ENDPOINT nor R2_ACCOUNT_ID is configured")
+            endpoint_url = f"https://{self.config.r2_account_id}.r2.cloudflarestorage.com"
 
         client = boto3.client(
             "s3",
-            endpoint_url=self.config.r2_endpoint or None,
+            endpoint_url=endpoint_url,
             aws_access_key_id=self.config.r2_access_key_id,
             aws_secret_access_key=self.config.r2_secret_access_key,
             config=BotoConfig(signature_version="s3v4"),
@@ -167,15 +186,21 @@ class JobProcessor:
             )
 
         if self.config.r2_endpoint:
-            public_url = f"{self.config.r2_endpoint}/{filename}"
+            # If we have an endpoint (possibly a custom domain), use it
+            public_url = f"{self.config.r2_endpoint.rstrip('/')}/{filename}"
         else:
-            public_url = f"https://{self.config.r2_bucket}.r2.cloudflarestorage.com/{filename}"
+            # Fallback to default R2 public URL format (bucket.account_id.r2.dev or similar)
+            # Cloudflare suggests using the custom domain if available,
+            # otherwise bucket.account.r2.cloudflarestorage.com is the S3 API endpoint.
+            # Usually users have a public bucket URL configured.
+            public_url = (
+                f"https://{self.config.r2_bucket}.{self.config.r2_account_id}.r2.dev/{filename}"
+            )
 
         logger.info("Uploaded to R2", extra={"url": public_url})
 
-        import os
-
-        os.unlink(local_path)
+        if os.path.exists(local_path):
+            os.unlink(local_path)
 
         return public_url
 
