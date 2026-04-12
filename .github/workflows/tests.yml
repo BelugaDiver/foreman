@@ -21,10 +21,10 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run unit tests
-        run: pytest tests/ --ignore=tests/integration -v
+        run: pytest tests/ --ignore=tests/foreman/integration -v
 
       - name: Run integration tests
-        run: pytest tests/integration -v
+        run: pytest tests/foreman/integration -v
 
       - name: Check coverage
         run: |
