@@ -21,7 +21,7 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run unit tests
-        run: pytest tests/ --ignore=tests/foreman/integration -v
+        run: pytest tests/ --ignore=tests/foreman/integration --ignore=tests/worker/test_integration.py -v
 
       - name: Run integration tests
         run: |
