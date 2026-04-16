@@ -24,7 +24,9 @@ jobs:
         run: pytest tests/ --ignore=tests/foreman/integration -v
 
       - name: Run integration tests
-        run: pytest tests/foreman/integration -v
+        run: |
+          docker info
+          pytest tests/foreman/integration -v
 
       - name: Check coverage
         run: |
