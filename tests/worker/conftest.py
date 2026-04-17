@@ -39,7 +39,7 @@ def pytest_sessionstart(session):
         "CorrelationIdFilter", (), {"filter": lambda self, record: True}
     )
 
-    # External mocks
+    # External mocks (includes boto3/botocore for test_basic compatibility)
     for module_name, mock_module in [
         ("google", MagicMock()),
         ("google.genai", MagicMock()),

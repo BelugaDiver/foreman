@@ -61,7 +61,6 @@ def setup_module(module):
 
 def teardown_module(module):
     """Clean up mocks after worker tests."""
-    # Restore original modules
     sys.modules.clear()
     sys.modules.update(_original_modules)
 
