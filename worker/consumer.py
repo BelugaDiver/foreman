@@ -119,6 +119,7 @@ class SQSConsumer:
             task = asyncio.create_task(self._handle_message(msg))
             self._in_flight.add(task)
             task.add_done_callback(self._in_flight.discard)
+            tasks.append(task)
 
         if tasks:
             await asyncio.gather(*tasks)
