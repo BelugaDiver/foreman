@@ -22,6 +22,7 @@ logger = get_logger("worker.main")
 health_app = FastAPI(title="worker-health")
 
 _db_instance: Database | None = None
+_consumer_instance: SQSConsumer | None = None
 
 
 @health_app.get("/health")
@@ -32,19 +33,42 @@ async def health():
 
 @health_app.get("/ready")
 async def ready():
-    """Readiness check - verifies DB connectivity."""
-    global _db_instance
+    """Readiness check - verifies DB connectivity and consumer status."""
+    global _db_instance, _consumer_instance
+
+    status = "ready"
+    checks = {}
+
+    # DB Check
     if _db_instance is None:
-        return JSONResponse({"status": "not ready", "database": "not initialized"}, status_code=503)
-    try:
-        await _db_instance.execute("SELECT 1")
-        return {"status": "ready", "database": "connected"}
-    except Exception:
-        return JSONResponse({"status": "not ready", "database": "disconnected"}, status_code=503)
+        status = "not ready"
+        checks["database"] = "not initialized"
+    else:
+        try:
+            await _db_instance.execute("SELECT 1")
+            checks["database"] = "connected"
+        except Exception:
+            status = "not ready"
+            checks["database"] = "disconnected"
+
+    # Consumer Check
+    if _consumer_instance is None:
+        status = "not ready"
+        checks["consumer"] = "not initialized"
+    elif not _consumer_instance.is_ready():
+        status = "not ready"
+        checks["consumer"] = "stopped"
+    else:
+        checks["consumer"] = "running"
+
+    if status != "ready":
+        return JSONResponse({"status": status, **checks}, status_code=503)
+
+    return {"status": status, **checks}
 
 
 async def main():
-    global _db_instance
+    global _db_instance, _consumer_instance
 
     # Initialize logging centrally
     configure_logging()
@@ -88,6 +112,7 @@ async def main():
         concurrency=config.concurrency,
         max_retries=config.max_retries,
     )
+    _consumer_instance = consumer
 
     shutdown_event = asyncio.Event()
 

@@ -9,10 +9,13 @@ from dataclasses import dataclass
 
 from google import genai
 from google.genai import types
+from opentelemetry import trace
 
 from foreman.logging_config import get_logger
 
 logger = get_logger("worker.providers.vertex")
+
+tracer = trace.get_tracer(__name__)
 
 
 @dataclass
@@ -52,27 +55,30 @@ class GeminiProvider:
 
     async def enhance_prompt(self, prompt: str, input_image_url: str) -> str:
         """Enhance prompt using cheaper Gemini 2.0 Flash model."""
-        logger.info(
-            "Enhancing prompt",
-            extra={"model": self.enhancement_model, "original_prompt": prompt},
-        )
-
-        def _enhance():
-            client = self._get_client()
-            response = client.models.generate_content(
-                model=self.enhancement_model,
-                contents=[
-                    f"Given this user prompt: '{prompt}'\n"
-                    f"And this input image: {input_image_url}\n\n"
-                    "Enhance the prompt to be more detailed for image generation. "
-                    "Focus on style, composition, lighting, and colors.",
-                ],
+        with tracer.start_as_current_span("enhance_prompt") as span:
+            span.set_attribute("original_prompt", prompt)
+            logger.info(
+                "Enhancing prompt",
+                extra={"model": self.enhancement_model, "original_prompt": prompt},
             )
-            return response.text
 
-        enhanced = await asyncio.to_thread(_enhance)
-        logger.info("Prompt enhanced", extra={"enhanced_prompt": enhanced})
-        return enhanced
+            def _enhance():
+                client = self._get_client()
+                response = client.models.generate_content(
+                    model=self.enhancement_model,
+                    contents=[
+                        f"Given this user prompt: '{prompt}'\n"
+                        f"And this input image: {input_image_url}\n\n"
+                        "Enhance the prompt to be more detailed for image generation. "
+                        "Focus on style, composition, lighting, and colors.",
+                    ],
+                )
+                return response.text
+
+            enhanced = await asyncio.to_thread(_enhance)
+            logger.info("Prompt enhanced", extra={"enhanced_prompt": enhanced})
+            span.set_attribute("enhanced_prompt", enhanced)
+            return enhanced
 
     async def generate(
         self,
@@ -86,81 +92,94 @@ class GeminiProvider:
         Optionally enhances prompt first using cheaper model.
         Downloads input image if it's an HTTP URL (Gemini only accepts gs:// URIs).
         """
-        final_prompt = prompt
+        with tracer.start_as_current_span("generate_image") as span:
+            span.set_attribute("prompt", prompt)
+            span.set_attribute("has_input_image", input_image_url is not None)
 
-        if enhance_prompt and input_image_url:
-            final_prompt = await self.enhance_prompt(prompt, input_image_url)
+            final_prompt = prompt
 
-        logger.info(
-            "Generating with Gemini",
-            extra={
-                "prompt": final_prompt,
-                "model": self.image_model,
-                "has_input_image": input_image_url is not None,
-            },
-        )
+            if enhance_prompt and input_image_url:
+                final_prompt = await self.enhance_prompt(prompt, input_image_url)
 
-        input_content = None
-        if input_image_url:
-            if input_image_url.startswith("http"):
-                local_path = await self._download_image(input_image_url)
-                with open(local_path, "rb") as f:
-                    input_content = types.Part.from_bytes(
-                        data=f.read(),
+            logger.info(
+                "Generating with Gemini",
+                extra={
+                    "prompt": final_prompt,
+                    "model": self.image_model,
+                    "has_input_image": input_image_url is not None,
+                },
+            )
+
+            input_content = None
+            if input_image_url:
+                if input_image_url.startswith("http"):
+                    local_path = await self._download_image(input_image_url)
+                    with open(local_path, "rb") as f:
+                        input_content = types.Part.from_bytes(
+                            data=f.read(),
+                            mime_type="image/jpeg",
+                        )
+                    os.unlink(local_path)
+                else:
+                    input_content = types.Part.from_uri(
+                        file_uri=input_image_url,
                         mime_type="image/jpeg",
                     )
-                os.unlink(local_path)
-            else:
-                input_content = types.Part.from_uri(
-                    file_uri=input_image_url,
-                    mime_type="image/jpeg",
+
+            def _generate():
+                client = self._get_client()
+
+                contents = []
+                if input_content:
+                    contents.append(input_content)
+                contents.append(final_prompt)
+
+                config = types.GenerateContentConfig(
+                    response_modalities=[types.Modality.TEXT, types.Modality.IMAGE],
+                    temperature=0.7,
                 )
 
-        def _generate():
-            client = self._get_client()
+                response = client.models.generate_content(
+                    model=self.image_model,
+                    contents=contents,
+                    config=config,
+                )
+                return response
 
-            contents = []
-            if input_content:
-                contents.append(input_content)
-            contents.append(final_prompt)
+            response = await asyncio.to_thread(_generate)
 
-            config = types.GenerateContentConfig(
-                response_modalities=[types.Modality.TEXT, types.Modality.IMAGE],
-                temperature=0.7,
+            image_data = None
+            for part in response.candidates[0].content.parts:
+                if part.inline_data:
+                    image_data = part.inline_data.data
+                    break
+
+            if not image_data:
+                raise ValueError("No image generated in response")
+
+            temp_path = f"/tmp/generated_{os.urandom(8).hex()}.png"
+            with open(temp_path, "wb") as f:
+                f.write(image_data)
+
+            output_url = f"file://{temp_path}"
+
+            span.set_attribute("model_used", self.image_model)
+            return ImageResult(
+                output_image_url=output_url,
+                model_used=self.image_model,
             )
-
-            response = client.models.generate_content(
-                model=self.image_model,
-                contents=contents,
-                config=config,
-            )
-            return response
-
-        response = await asyncio.to_thread(_generate)
-
-        image_data = None
-        for part in response.candidates[0].content.parts:
-            if part.inline_data:
-                image_data = part.inline_data.data
-                break
-
-        if not image_data:
-            raise ValueError("No image generated in response")
-
-        temp_path = f"/tmp/generated_{os.urandom(8).hex()}.png"
-        with open(temp_path, "wb") as f:
-            f.write(image_data)
-
-        output_url = f"file://{temp_path}"
-
-        return ImageResult(
-            output_image_url=output_url,
-            model_used=self.image_model,
-        )
 
     async def _download_image(self, url: str) -> str:
         """Download image from HTTP URL to temp file."""
-        temp_path = f"/tmp/input_{os.urandom(8).hex()}.jpg"
-        urllib.request.urlretrieve(url, temp_path)
-        logger.info("Downloaded input image", extra={"url": url, "path": temp_path})
-        return temp_path
+        with tracer.start_as_current_span("download_input_image") as span:
+            span.set_attribute("url", url)
+            temp_path = f"/tmp/input_{os.urandom(8).hex()}.jpg"
+
+            def _download():
+                with urllib.request.urlopen(url, timeout=30) as response:
+                    with open(temp_path, "wb") as f:
+                        f.write(response.read())
+
+            await asyncio.to_thread(_download)
+            logger.info("Downloaded input image", extra={"url": url, "path": temp_path})
+            return temp_path

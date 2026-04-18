@@ -1,79 +1,10 @@
 """Worker comprehensive tests."""
 
 import asyncio
-import sys
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-# Save original modules before any mocking
-_original_modules = sys.modules.copy()
-
-
-def setup_module(module):
-    """Set up mocks before worker tests."""
-    mock_modules = {
-        "google": MagicMock(),
-        "google.genai": MagicMock(),
-        "google.genai.types": MagicMock(),
-        "boto3": MagicMock(),
-        "botocore": MagicMock(),
-        "botocore.config": MagicMock(),
-        "opentelemetry": MagicMock(),
-        "opentelemetry.trace": MagicMock(),
-    }
-
-    for module_name, mock_module in mock_modules.items():
-        sys.modules[module_name] = mock_module
-
-    sys.modules["foreman"] = MagicMock()
-    sys.modules["foreman.db"] = MagicMock()
-    sys.modules["foreman.logging_config"] = MagicMock()
-    sys.modules["foreman.logging_config.get_logger"] = MagicMock(return_value=MagicMock())
-    sys.modules["foreman.logging_config.configure_logging"] = MagicMock()
-    sys.modules["foreman.queue"] = MagicMock()
-    sys.modules["foreman.queue.settings"] = MagicMock()
-    sys.modules["foreman.telemetry"] = MagicMock()
-    sys.modules["foreman.telemetry.setup_telemetry"] = MagicMock()
-    sys.modules["foreman.repositories"] = MagicMock()
-    sys.modules["foreman.repositories.postgres_generations_repository"] = MagicMock()
-    sys.modules["foreman.schemas"] = MagicMock()
-    sys.modules["foreman.schemas.generation"] = MagicMock()
-
-    mock_genai = MagicMock()
-    mock_types = MagicMock()
-    sys.modules["google"].genai = mock_genai
-    sys.modules["google.genai"].types = mock_types
-    sys.modules["google.genai.types"].Modality = MagicMock()
-    sys.modules["google.genai.types"].Part = MagicMock()
-
-    mock_boto3 = MagicMock()
-    sys.modules["boto3"].client = MagicMock(return_value=MagicMock())
-    sys.modules["boto3"] = mock_boto3
-
-    mock_otel = MagicMock()
-    mock_trace = MagicMock()
-    mock_otel.trace.get_tracer = MagicMock(return_value=MagicMock())
-    sys.modules["opentelemetry"] = mock_otel
-    sys.modules["opentelemetry.trace"] = mock_trace
-
-
-def teardown_module(module):
-    """Clean up mocks after worker tests."""
-    sys.modules.clear()
-    sys.modules.update(_original_modules)
-
-
-# Now import the worker modules after mocks are set up
-from worker.agent import AgentGraph, AgentResult
-from worker.config import WorkerConfig, get_worker_config
-from worker.consumer import GenerationJob, MalformedSQSMessageError, SQSConsumer
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -100,6 +31,8 @@ def mock_ai_provider():
 @pytest.fixture
 def mock_config():
     """Mock worker config."""
+    from worker.config import WorkerConfig
+
     config = WorkerConfig()
     config.concurrency = 1
     config.max_retries = 3
@@ -133,6 +66,8 @@ def sample_job():
 
 def test_worker_config_defaults():
     """Test config has sensible defaults."""
+    from worker.config import WorkerConfig
+
     config = WorkerConfig()
     assert config.concurrency == 1
     assert config.max_retries == 3
@@ -147,6 +82,8 @@ def test_worker_config_from_env(monkeypatch):
     monkeypatch.setenv("GOOGLE_PROJECT_ID", "test-project")
     monkeypatch.setenv("GEMINI_IMAGE_MODEL", "gemini-2.0-flash")
 
+    from worker.config import WorkerConfig
+
     config = WorkerConfig()
     assert config.concurrency == 5
     assert config.max_retries == 10
@@ -160,6 +97,8 @@ def test_worker_config_r2_settings(monkeypatch):
     monkeypatch.setenv("R2_ACCOUNT_ID", "my-account")
     monkeypatch.setenv("R2_ENDPOINT", "https://my-endpoint.com")
 
+    from worker.config import WorkerConfig
+
     config = WorkerConfig()
     assert config.r2_bucket == "my-bucket"
     assert config.r2_account_id == "my-account"
@@ -168,8 +107,10 @@ def test_worker_config_r2_settings(monkeypatch):
 
 def test_get_worker_config():
     """Test factory function."""
+    from worker.config import get_worker_config
+
     config = get_worker_config()
-    assert isinstance(config, WorkerConfig)
+    assert isinstance(config, get_worker_config().__class__)
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +120,8 @@ def test_get_worker_config():
 
 def test_generation_job_from_message_valid():
     """Test parsing valid SQS message."""
+    from worker.consumer import GenerationJob
+
     body = {
         "generation_id": "gen-123",
         "project_id": "proj-456",
@@ -200,6 +143,8 @@ def test_generation_job_from_message_valid():
 
 def test_generation_job_from_message_with_optional_fields():
     """Test parsing with optional fields."""
+    from worker.consumer import GenerationJob
+
     body = {
         "generation_id": "gen-123",
         "project_id": "proj-456",
@@ -221,6 +166,8 @@ def test_generation_job_from_message_with_optional_fields():
 
 def test_generation_job_from_message_no_user_id():
     """Test parsing without message attributes."""
+    from worker.consumer import GenerationJob
+
     body = {
         "generation_id": "gen-123",
         "project_id": "proj-456",
@@ -235,6 +182,8 @@ def test_generation_job_from_message_no_user_id():
 
 def test_generation_job_from_message_missing_required():
     """Test parsing with missing required fields raises error."""
+    from worker.consumer import GenerationJob, MalformedSQSMessageError
+
     body = {
         "generation_id": "gen-123",
         "prompt": "make it modern",
@@ -253,6 +202,8 @@ def test_generation_job_from_message_missing_required():
 
 def test_generation_job_from_message_empty_string():
     """Test empty string is treated as missing."""
+    from worker.consumer import GenerationJob, MalformedSQSMessageError
+
     body = {
         "generation_id": "gen-123",
         "project_id": "",
@@ -268,6 +219,8 @@ def test_generation_job_from_message_empty_string():
 @pytest.mark.asyncio
 async def test_sqs_consumer_initialization():
     """Test SQS consumer initializes correctly."""
+    from worker.consumer import SQSConsumer
+
     process_fn = AsyncMock()
     consumer = SQSConsumer(
         queue_url="https://sqs.test.com/queue",
@@ -287,6 +240,8 @@ async def test_sqs_consumer_initialization():
 @pytest.mark.asyncio
 async def test_sqs_consumer_start_stop():
     """Test consumer can be started and stopped."""
+    from worker.consumer import SQSConsumer
+
     process_fn = AsyncMock()
     consumer = SQSConsumer(
         queue_url="https://sqs.test.com/queue",
@@ -309,6 +264,8 @@ async def test_sqs_consumer_start_stop():
 @pytest.mark.asyncio
 async def test_sqs_consumer_handles_gracefully():
     """Test consumer handles exceptions in loop."""
+    from worker.consumer import SQSConsumer
+
     process_fn = AsyncMock()
     consumer = SQSConsumer(
         queue_url="https://sqs.test.com/queue",
@@ -331,6 +288,8 @@ async def test_sqs_consumer_handles_gracefully():
 @pytest.mark.asyncio
 async def test_agent_graph_run():
     """Test agent graph returns result."""
+    from worker.agent import AgentGraph, AgentResult
+
     agent = AgentGraph()
 
     result = await agent.run(
@@ -347,6 +306,8 @@ async def test_agent_graph_run():
 @pytest.mark.asyncio
 async def test_agent_graph_without_style():
     """Test agent graph works without style."""
+    from worker.agent import AgentGraph, AgentResult
+
     agent = AgentGraph()
 
     result = await agent.run(

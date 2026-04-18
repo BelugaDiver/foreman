@@ -10,10 +10,13 @@ from typing import Callable
 
 import boto3
 from botocore.config import Config
+from opentelemetry import trace
 
 from foreman.logging_config import get_logger
 
 logger = get_logger("worker.consumer")
+
+tracer = trace.get_tracer(__name__)
 
 
 class MalformedSQSMessageError(Exception):
@@ -99,34 +102,38 @@ class SQSConsumer:
 
     async def poll(self):
         """Poll for messages and process them concurrently."""
-        # Calculate available capacity to avoid pulling more than we can handle
-        in_flight_count = len(self._in_flight)
-        available_slots = self.concurrency - in_flight_count
+        with tracer.start_as_current_span("poll_sqs") as span:
+            # Calculate available capacity to avoid pulling more than we can handle
+            in_flight_count = len(self._in_flight)
+            available_slots = self.concurrency - in_flight_count
 
-        if available_slots <= 0:
-            return
+            if available_slots <= 0:
+                return
 
-        client = self._get_client()
-        batch_size = min(available_slots, 10)
+            client = self._get_client()
+            batch_size = min(available_slots, 10)
+            span.set_attribute("batch_size", batch_size)
 
-        response = await asyncio.to_thread(
-            client.receive_message,
-            QueueUrl=self.queue_url,
-            MaxNumberOfMessages=batch_size,
-            WaitTimeSeconds=10,
-            VisibilityTimeout=300,
-            AttributeNames=["ApproximateReceiveCount"],
-            MessageAttributeNames=["All"],
-        )
+            response = await asyncio.to_thread(
+                client.receive_message,
+                QueueUrl=self.queue_url,
+                MaxNumberOfMessages=batch_size,
+                WaitTimeSeconds=10,
+                VisibilityTimeout=300,
+                AttributeNames=["ApproximateReceiveCount"],
+                MessageAttributeNames=["All"],
+            )
 
-        messages = response.get("Messages", [])
-        tasks = []
-        for msg in messages:
-            task = asyncio.create_task(self._handle_message(msg))
-            self._in_flight.add(task)
-            task.add_done_callback(self._in_flight.discard)
-            tasks.append(task)
-        return tasks
+            messages = response.get("Messages", [])
+            span.set_attribute("message_count", len(messages))
+
+            tasks = []
+            for msg in messages:
+                task = asyncio.create_task(self._handle_message(msg))
+                self._in_flight.add(task)
+                task.add_done_callback(self._in_flight.discard)
+                tasks.append(task)
+            return tasks
 
     async def _handle_message(self, msg: dict, retry_count: int = 0):
         """Handle a single SQS message with semaphore protection."""

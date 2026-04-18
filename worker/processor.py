@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 import uuid
@@ -17,7 +18,7 @@ from foreman.logging_config import get_logger
 from foreman.repositories import postgres_generations_repository as gen_repo
 from foreman.schemas.generation import GenerationUpdate
 from worker.config import WorkerConfig
-from worker.consumer import GenerationJob
+from worker.consumer import GenerationJob, MalformedSQSMessageError
 
 logger = get_logger("worker.processor")
 
@@ -110,7 +111,11 @@ class JobProcessor:
                 logger.exception("Job failed", extra={"generation_id": job.generation_id})
 
                 span.record_exception(exc)
-                span.set_status(trace.StatusCode.ERROR, str(exc))
+                span.set_status(trace.StatusCode.ERROR, "Job processing failed")
+
+                error_msg = "Internal processing error"
+                if isinstance(exc, MalformedSQSMessageError):
+                    error_msg = "Invalid job message format"
 
                 user_id = None
                 if job.user_id:
@@ -128,13 +133,13 @@ class JobProcessor:
                     job.generation_id,
                     user_id,
                     "failed",
-                    error_message=str(exc),
+                    error_message=error_msg,
                     processing_time_ms=processing_time_ms,
                 )
 
                 return ProcessingResult(
                     success=False,
-                    error_message=str(exc),
+                    error_message=error_msg,
                     processing_time_ms=processing_time_ms,
                     retry_count=retry_count,
                 )
@@ -159,50 +164,54 @@ class JobProcessor:
 
     async def _upload_to_storage(self, local_path: str) -> str:
         """Upload generated image to R2 storage and return public URL."""
-        filename = f"generations/{uuid.uuid4()}.png"
+        with tracer.start_as_current_span("upload_to_storage") as span:
+            filename = f"generations/{uuid.uuid4()}.png"
+            span.set_attribute("filename", filename)
 
-        # Robust endpoint handling
-        endpoint_url = self.config.r2_endpoint
-        if not endpoint_url:
-            if not self.config.r2_account_id:
-                raise ValueError("Neither R2_ENDPOINT nor R2_ACCOUNT_ID is configured")
-            endpoint_url = f"https://{self.config.r2_account_id}.r2.cloudflarestorage.com"
+            # Robust endpoint handling
+            endpoint_url = self.config.r2_endpoint
+            if not endpoint_url:
+                if not self.config.r2_account_id:
+                    raise ValueError("Neither R2_ENDPOINT nor R2_ACCOUNT_ID is configured")
+                endpoint_url = f"https://{self.config.r2_account_id}.r2.cloudflarestorage.com"
 
-        client = boto3.client(
-            "s3",
-            endpoint_url=endpoint_url,
-            aws_access_key_id=self.config.r2_access_key_id,
-            aws_secret_access_key=self.config.r2_secret_access_key,
-            config=BotoConfig(signature_version="s3v4"),
-            region_name="auto",
-        )
-
-        with open(local_path, "rb") as f:
-            client.upload_fileobj(
-                f,
-                self.config.r2_bucket,
-                filename,
-                ExtraArgs={"ContentType": "image/png"},
+            client = boto3.client(
+                "s3",
+                endpoint_url=endpoint_url,
+                aws_access_key_id=self.config.r2_access_key_id,
+                aws_secret_access_key=self.config.r2_secret_access_key,
+                config=BotoConfig(signature_version="s3v4"),
+                region_name="auto",
             )
 
-        if self.config.r2_endpoint:
-            # If we have an endpoint (possibly a custom domain), use it
-            public_url = f"{self.config.r2_endpoint.rstrip('/')}/{filename}"
-        else:
-            # Fallback to default R2 public URL format (bucket.account_id.r2.dev or similar)
-            # Cloudflare suggests using the custom domain if available,
-            # otherwise bucket.account.r2.cloudflarestorage.com is the S3 API endpoint.
-            # Usually users have a public bucket URL configured.
-            public_url = (
-                f"https://{self.config.r2_bucket}.{self.config.r2_account_id}.r2.dev/{filename}"
-            )
+            with open(local_path, "rb") as f:
+                await asyncio.to_thread(
+                    client.upload_fileobj,
+                    f,
+                    self.config.r2_bucket,
+                    filename,
+                    ExtraArgs={"ContentType": "image/png"},
+                )
 
-        logger.info("Uploaded to R2", extra={"url": public_url})
+            if self.config.r2_endpoint:
+                # If we have an endpoint (possibly a custom domain), use it
+                public_url = f"{self.config.r2_endpoint.rstrip('/')}/{filename}"
+            else:
+                # Fallback to default R2 public URL format (bucket.account_id.r2.dev or similar)
+                # Cloudflare suggests using the custom domain if available,
+                # otherwise bucket.account.r2.cloudflarestorage.com is the S3 API endpoint.
+                # Usually users have a public bucket URL configured.
+                public_url = (
+                    f"https://{self.config.r2_bucket}.{self.config.r2_account_id}.r2.dev/{filename}"
+                )
 
-        if os.path.exists(local_path):
-            os.unlink(local_path)
+            logger.info("Uploaded to R2", extra={"url": public_url})
+            span.set_attribute("public_url", public_url)
 
-        return public_url
+            if os.path.exists(local_path):
+                os.unlink(local_path)
+
+            return public_url
 
     async def _update_status(
         self,
@@ -233,5 +242,5 @@ class JobProcessor:
             self.db,
             generation_id=gen_id,
             user_id=user_id,
-            gen_in=update,
+            generation_in=update,
         )
