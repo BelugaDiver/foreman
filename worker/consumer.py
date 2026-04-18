@@ -99,9 +99,15 @@ class SQSConsumer:
 
     async def poll(self):
         """Poll for messages and process them concurrently."""
-        client = self._get_client()
+        # Calculate available capacity to avoid pulling more than we can handle
+        in_flight_count = len(self._in_flight)
+        available_slots = self.concurrency - in_flight_count
 
-        batch_size = min(self.concurrency, 10)
+        if available_slots <= 0:
+            return
+
+        client = self._get_client()
+        batch_size = min(available_slots, 10)
 
         response = await asyncio.to_thread(
             client.receive_message,
@@ -120,14 +126,14 @@ class SQSConsumer:
             self._in_flight.add(task)
             task.add_done_callback(self._in_flight.discard)
             tasks.append(task)
-
-        if tasks:
-            await asyncio.gather(*tasks)
+        return tasks
 
     async def _handle_message(self, msg: dict, retry_count: int = 0):
         """Handle a single SQS message with semaphore protection."""
         async with self._semaphore:
             client = self._get_client()
+            actual_retry = 0
+            body = {}
             try:
                 body = json.loads(msg["Body"])
                 message_attributes = msg.get("MessageAttributes")
@@ -164,14 +170,14 @@ class SQSConsumer:
                 )
 
             except Exception:
-                logger.exception("Failed to process message", extra={"retry": retry_count})
+                logger.exception("Failed to process message", extra={"retry": actual_retry})
 
-                if retry_count >= self.max_retries:
+                if actual_retry >= self.max_retries:
                     logger.error(
                         "Max retries exceeded, discarding message",
                         extra={
                             "generation_id": body.get("generation_id")
-                            if "body" in locals()
+                            if body
                             else "unknown"
                         },
                     )
@@ -180,8 +186,6 @@ class SQSConsumer:
                         QueueUrl=self.queue_url,
                         ReceiptHandle=msg["ReceiptHandle"],
                     )
-                else:
-                    raise
 
     async def start(self):
         """Run the consumer loop."""
@@ -191,7 +195,15 @@ class SQSConsumer:
         while self._running:
             try:
                 await self.poll()
-                await asyncio.sleep(1)
+
+                # If we are at capacity, wait for at least one task to finish
+                # before polling again. This avoids a tight loop.
+                if len(self._in_flight) >= self.concurrency:
+                    if self._in_flight:
+                        await asyncio.wait(self._in_flight, return_when=asyncio.FIRST_COMPLETED)
+                else:
+                    # Small sleep to prevent tight loop when no messages are available
+                    await asyncio.sleep(0.1)
             except Exception:
                 logger.exception("Error in consumer loop")
                 await asyncio.sleep(5)

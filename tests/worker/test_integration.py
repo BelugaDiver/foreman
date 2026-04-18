@@ -4,6 +4,7 @@ These tests require real boto3 for moto to work and must run in isolation from t
 In CI, run as: pytest tests/worker/test_integration.py
 """
 
+import asyncio
 import json
 import os
 from unittest.mock import AsyncMock
@@ -70,7 +71,9 @@ async def test_worker_processes_sqs_message(mock_process_fn):
             concurrency=1,
         )
 
-        await consumer.poll()
+        tasks = await consumer.poll()
+        if tasks:
+            await asyncio.gather(*tasks)
 
     assert call_count == 1, f"Expected 1 call, got {call_count}"
     assert len(processed_jobs) == 1
@@ -134,7 +137,9 @@ async def test_worker_processes_multiple_messages():
             concurrency=3,
         )
 
-        await consumer.poll()
+        tasks = await consumer.poll()
+        if tasks:
+            await asyncio.gather(*tasks)
 
     assert len(processed_jobs) == 3
 
@@ -167,7 +172,9 @@ async def test_worker_deletes_message_after_processing():
 
         consumer = SQSConsumer(queue_url=queue_url, process_fn=process_fn, concurrency=1)
 
-        await consumer.poll()
+        tasks = await consumer.poll()
+        if tasks:
+            await asyncio.gather(*tasks)
 
         response = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10)
         assert len(response.get("Messages", [])) == 0
