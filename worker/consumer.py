@@ -79,11 +79,15 @@ class SQSConsumer:
         process_fn: Callable,
         concurrency: int = 1,
         max_retries: int = 3,
+        poll_interval: int = 10,
+        visibility_timeout: int = 300,
     ):
         self.queue_url = queue_url
         self.process_fn = process_fn
         self.concurrency = concurrency
         self.max_retries = max_retries
+        self.poll_interval = poll_interval
+        self.visibility_timeout = visibility_timeout
         self._client = None
         self._running = False
         self._semaphore = asyncio.Semaphore(concurrency)
@@ -118,8 +122,8 @@ class SQSConsumer:
                 client.receive_message,
                 QueueUrl=self.queue_url,
                 MaxNumberOfMessages=batch_size,
-                WaitTimeSeconds=10,
-                VisibilityTimeout=300,
+                WaitTimeSeconds=self.poll_interval,
+                VisibilityTimeout=self.visibility_timeout,
                 AttributeNames=["ApproximateReceiveCount"],
                 MessageAttributeNames=["All"],
             )
@@ -182,11 +186,7 @@ class SQSConsumer:
                 if actual_retry >= self.max_retries:
                     logger.error(
                         "Max retries exceeded, discarding message",
-                        extra={
-                            "generation_id": body.get("generation_id")
-                            if body
-                            else "unknown"
-                        },
+                        extra={"generation_id": body.get("generation_id") if body else "unknown"},
                     )
                     await asyncio.to_thread(
                         client.delete_message,
@@ -221,10 +221,17 @@ class SQSConsumer:
         self._running = False
 
         if self._in_flight:
-            await asyncio.wait_for(
-                asyncio.gather(*self._in_flight, return_exceptions=True),
-                timeout=timeout,
-            )
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*self._in_flight, return_exceptions=True),
+                    timeout=timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Shutdown timeout, cancelling in-flight tasks")
+                for task in self._in_flight:
+                    task.cancel()
+                if self._in_flight:
+                    await asyncio.gather(*self._in_flight, return_exceptions=True)
         logger.info("Consumer stopped")
 
     def is_ready(self) -> bool:

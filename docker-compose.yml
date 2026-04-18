@@ -34,5 +34,20 @@ services:
     environment:
       - COLLECTOR_OTLP_ENABLED=true
 
+worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    env_file:
+      - ./.env.foreman
+    ports:
+      - "8081:8081"
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318/v1/traces
+      - OTEL_EXPORTER_OTLP_INSECURE=true
+      - QUEUE_PROVIDER=sqs
+    depends_on:
+      - db
+
 volumes:
   postgres_data:

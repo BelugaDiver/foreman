@@ -73,9 +73,12 @@ async def main():
     # Initialize logging centrally
     configure_logging()
 
+    otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    insecure = os.getenv("OTEL_EXPORTER_OTLP_INSECURE", "true").lower() == "true"
     setup_telemetry(
         service_name="foreman-worker",
-        otlp_endpoint=os.getenv("OTLP_ENDPOINT"),
+        otlp_endpoint=otlp_endpoint,
+        insecure=insecure,
     )
     logger.info("Telemetry initialized")
 
@@ -88,7 +91,7 @@ async def main():
         return
 
     db = Database.from_env()
-    await db.connect()
+    await db.startup()
     _db_instance = db
     logger.info("Database connected")
 
@@ -111,6 +114,8 @@ async def main():
         process_fn=processor.process,
         concurrency=config.concurrency,
         max_retries=config.max_retries,
+        poll_interval=config.poll_interval,
+        visibility_timeout=config.visibility_timeout,
     )
     _consumer_instance = consumer
 
@@ -120,22 +125,31 @@ async def main():
         logger.info(f"Received signal {sig}, initiating shutdown...")
         shutdown_event.set()
 
-    loop = asyncio.get_event_loop()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, lambda s=sig: shutdown_event.set())
-
     try:
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, lambda s=sig: shutdown_event.set())
+    except RuntimeError:
+        logger.debug("No running loop, signal handlers not registered")
+
+    async def run_consumer():
         await consumer.start()
-    except KeyboardInterrupt:
-        logger.info("Shutting down...")
-    finally:
+
+    async def wait_for_shutdown():
+        await shutdown_event.wait()
         await consumer.stop(timeout=60.0)
 
+    try:
+        await asyncio.gather(run_consumer(), wait_for_shutdown(), return_exceptions=False)
+    except asyncio.CancelledError:
+        logger.info("Consumer cancelled")
+    finally:
+        await consumer.stop(timeout=60.0)
         health_server.should_exit = True
         await health_task
 
         _db_instance = None
-        await db.disconnect()
+        await db.shutdown()
         logger.info("Worker stopped")
 
 
