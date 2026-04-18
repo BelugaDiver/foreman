@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import urllib.parse
 from dataclasses import dataclass, field
 
 
@@ -39,12 +40,26 @@ class WorkerConfig:
     r2_bucket: str = field(default_factory=lambda: os.getenv("R2_BUCKET", "foreman-assets"))
     r2_account_id: str = field(default_factory=lambda: os.getenv("R2_ACCOUNT_ID", ""))
     r2_endpoint: str = field(default_factory=lambda: os.getenv("R2_ENDPOINT", ""))
+    r2_public_url: str = field(default_factory=lambda: os.getenv("R2_PUBLIC_URL", ""))
     r2_access_key_id: str = field(default_factory=lambda: os.getenv("R2_ACCESS_KEY_ID", ""))
     r2_secret_access_key: str = field(default_factory=lambda: os.getenv("R2_SECRET_ACCESS_KEY", ""))
 
     @classmethod
     def from_env(cls) -> "WorkerConfig":
         return cls()
+
+    def get_allowed_image_domains(self) -> set[str]:
+        """Get allowed domains for input image downloads (SSRF protection)."""
+        domains = set()
+        if self.r2_public_url:
+            parsed = urllib.parse.urlparse(self.r2_public_url)
+            if parsed.hostname:
+                domains.add(parsed.hostname)
+        if self.r2_endpoint:
+            parsed = urllib.parse.urlparse(self.r2_endpoint)
+            if parsed.hostname:
+                domains.add(parsed.hostname)
+        return domains
 
 
 def get_worker_config() -> WorkerConfig:

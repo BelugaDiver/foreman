@@ -37,11 +37,13 @@ class GeminiProvider:
         location: str = "us-central1",
         image_model: str = "gemini-3.1-flash-image",
         enhancement_model: str = "gemini-2.0-flash",
+        allowed_image_domains: set[str] | None = None,
     ):
         self.project_id = project_id or os.getenv("GOOGLE_PROJECT_ID")
         self.location = location
         self.image_model = image_model
         self.enhancement_model = enhancement_model
+        self.allowed_image_domains = allowed_image_domains or set()
         self._client: genai.Client | None = None
 
     def _get_client(self) -> genai.Client:
@@ -59,7 +61,7 @@ class GeminiProvider:
             span.set_attribute("original_prompt", prompt)
             logger.info(
                 "Enhancing prompt",
-                extra={"model": self.enhancement_model, "original_prompt": prompt},
+                extra={"model": self.enhancement_model, "prompt_length": len(prompt)},
             )
 
             def _enhance():
@@ -76,7 +78,7 @@ class GeminiProvider:
                 return response.text
 
             enhanced = await asyncio.to_thread(_enhance)
-            logger.info("Prompt enhanced", extra={"enhanced_prompt": enhanced})
+            logger.info("Prompt enhanced", extra={"enhanced_prompt_length": len(enhanced)})
             span.set_attribute("enhanced_prompt", enhanced)
             return enhanced
 
@@ -174,6 +176,14 @@ class GeminiProvider:
 
     async def _download_image(self, url: str) -> str:
         """Download image from HTTP URL to temp file."""
+        # SSRF protection: validate URL domain
+        if self.allowed_image_domains:
+            parsed = urllib.parse.urlparse(url)
+            if parsed.hostname not in self.allowed_image_domains:
+                raise ValueError(f"Image URL domain not allowed: {parsed.hostname}")
+            if parsed.scheme != "https":
+                raise ValueError("Image URL must use HTTPS")
+
         temp_path = None
         try:
             with tracer.start_as_current_span("download_input_image") as span:

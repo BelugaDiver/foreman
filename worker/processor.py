@@ -148,7 +148,8 @@ class JobProcessor:
     async def _run_agent(self, job: GenerationJob) -> dict:
         """Run the agent graph using AI provider."""
         logger.info(
-            "Running agent", extra={"prompt": job.prompt, "input_image": job.input_image_url}
+            "Running agent",
+            extra={"prompt_length": len(job.prompt), "input_image": job.input_image_url},
         )
 
         result = await self.ai_provider.generate(
@@ -194,7 +195,10 @@ class JobProcessor:
                     ExtraArgs={"ContentType": "image/png"},
                 )
 
-            if self.config.r2_endpoint:
+            if self.config.r2_public_url:
+                # Use configured public URL (custom CDN domain preferred)
+                public_url = f"{self.config.r2_public_url.rstrip('/')}/{filename}"
+            elif self.config.r2_endpoint:
                 # If we have an endpoint (possibly a custom domain), use it
                 public_url = f"{self.config.r2_endpoint.rstrip('/')}/{filename}"
             else:

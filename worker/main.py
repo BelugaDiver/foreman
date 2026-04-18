@@ -101,6 +101,7 @@ async def main():
         location=config.google_location,
         image_model=config.gemini_image_model,
         enhancement_model=config.gemini_enhancement_model,
+        allowed_image_domains=config.get_allowed_image_domains(),
     )
 
     health_server = Server(Config(app=health_app, host="0.0.0.0", port=8081, log_level="warning"))
