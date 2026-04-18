@@ -148,6 +148,9 @@ class GeminiProvider:
 
             response = await asyncio.to_thread(_generate)
 
+            if not response.candidates or not response.candidates[0].content.parts:
+                raise ValueError("No candidates in model response - possible safety block or error")
+
             image_data = None
             for part in response.candidates[0].content.parts:
                 if part.inline_data:
@@ -171,15 +174,21 @@ class GeminiProvider:
 
     async def _download_image(self, url: str) -> str:
         """Download image from HTTP URL to temp file."""
-        with tracer.start_as_current_span("download_input_image") as span:
-            span.set_attribute("url", url)
-            temp_path = f"/tmp/input_{os.urandom(8).hex()}.jpg"
+        temp_path = None
+        try:
+            with tracer.start_as_current_span("download_input_image") as span:
+                span.set_attribute("url", url)
+                temp_path = f"/tmp/input_{os.urandom(8).hex()}.jpg"
 
-            def _download():
-                with urllib.request.urlopen(url, timeout=30) as response:
-                    with open(temp_path, "wb") as f:
-                        f.write(response.read())
+                def _download():
+                    with urllib.request.urlopen(url, timeout=30) as response:
+                        with open(temp_path, "wb") as f:
+                            f.write(response.read())
 
-            await asyncio.to_thread(_download)
-            logger.info("Downloaded input image", extra={"url": url, "path": temp_path})
-            return temp_path
+                await asyncio.to_thread(_download)
+                logger.info("Downloaded input image", extra={"url": url, "path": temp_path})
+                return temp_path
+        except Exception:
+            if temp_path and os.path.exists(temp_path):
+                os.unlink(temp_path)
+            raise
