@@ -17,6 +17,7 @@ dependencies = [
     "psycopg[binary]>=3.2.10",
     "python-dotenv>=1.2.2",
     "boto3>=1.41.0",
+    "google-genai>=1.0.0",
 ]
 
 [project.optional-dependencies]
