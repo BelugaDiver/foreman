@@ -1,4 +1,4 @@
-"""Worker tests configuration."""
+"""Worker tests configuration — module-level mock installation."""
 
 import sys
 from types import ModuleType
@@ -7,14 +7,17 @@ from unittest.mock import MagicMock
 import pytest
 
 
-def pytest_sessionstart(session):
-    """Set up mocks before any tests run."""
+def _install_mocks() -> None:
+    """Install sys.modules stubs for external and foreman dependencies.
+
+    Called at import time so that mocks are present before any worker.*
+    module is imported during pytest collection.
+    """
     # Create foreman as a namespace package
     foreman_pkg = ModuleType("foreman")
     foreman_pkg.__path__ = []
-    sys.modules["foreman"] = foreman_pkg
+    sys.modules.setdefault("foreman", foreman_pkg)
 
-    # Create submodules as proper modules
     for submod_name in [
         "foreman.logging_config",
         "foreman.context",
@@ -28,29 +31,35 @@ def pytest_sessionstart(session):
         "foreman.schemas",
         "foreman.schemas.generation",
     ]:
-        mod = ModuleType(submod_name)
-        sys.modules[submod_name] = mod
+        if submod_name not in sys.modules:
+            mod = ModuleType(submod_name)
+            sys.modules[submod_name] = mod
 
     # Set up attributes on logging_config
     logging_mod = sys.modules["foreman.logging_config"]
-    logging_mod.get_logger = MagicMock(return_value=MagicMock())
-    logging_mod.configure_logging = MagicMock()
-    logging_mod.CorrelationIdFilter = type(
-        "CorrelationIdFilter", (), {"filter": lambda self, record: True}
-    )
+    if not hasattr(logging_mod, "get_logger"):
+        logging_mod.get_logger = MagicMock(return_value=MagicMock())
+        logging_mod.configure_logging = MagicMock()
+        logging_mod.CorrelationIdFilter = type(
+            "CorrelationIdFilter", (), {"filter": lambda self, record: True}
+        )
 
-    # External mocks (includes boto3/botocore for test_basic compatibility)
-    for module_name, mock_module in [
-        ("google", MagicMock()),
-        ("google.genai", MagicMock()),
-        ("google.genai.types", MagicMock()),
-        ("boto3", MagicMock()),
-        ("botocore", MagicMock()),
-        ("botocore.config", MagicMock()),
-        ("opentelemetry", MagicMock()),
-        ("opentelemetry.trace", MagicMock()),
+    for module_name in [
+        "google",
+        "google.genai",
+        "google.genai.types",
+        "boto3",
+        "botocore",
+        "botocore.config",
+        "opentelemetry",
+        "opentelemetry.trace",
     ]:
-        sys.modules[module_name] = mock_module
+        sys.modules.setdefault(module_name, MagicMock())
+
+
+# Install mocks at import time — this runs before any worker.* module is
+# imported during collection, regardless of conftest loading order.
+_install_mocks()
 
 
 def pytest_sessionfinish(session, exitstatus):
