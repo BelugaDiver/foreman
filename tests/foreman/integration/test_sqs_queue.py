@@ -10,13 +10,17 @@ import pytest
 from foreman.queue import factory
 from tests.foreman.integration.conftest import create_project_via_api, create_user_via_api
 
+
 @pytest.fixture(autouse=True)
 def _aws_env(monkeypatch):
-    """Set AWS environment variables for each test and restore them automatically."""
+    """Set AWS environment variables and clear queue cache for each test."""
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test")
     monkeypatch.setenv("AWS_REGION", "us-east-1")
     monkeypatch.setenv("QUEUE_PROVIDER", "sqs")
+    factory.get_queue.cache_clear()
+    yield
+    factory.get_queue.cache_clear()
 
 
 
@@ -32,7 +36,6 @@ async def test_create_generation_publishes_to_sqs(client: httpx.AsyncClient, mon
         monkeypatch.setenv("SQS_QUEUE_URL", queue_url)
 
         # Need to reload the factory to pick up the new queue URL
-        factory.get_queue.cache_clear()
 
         # Create user and project
         _, headers = await create_user_via_api(client, "sqs-test@example.com")
@@ -58,16 +61,11 @@ async def test_create_generation_publishes_to_sqs(client: httpx.AsyncClient, mon
         assert "generation_id" in body
         assert body["prompt"] == "a modern living room"
 
-        # Cleanup
-        factory.get_queue.cache_clear()
-
 
 @pytest.mark.asyncio
 async def test_create_generation_queue_failure_doesnt_fail_request(client: httpx.AsyncClient, monkeypatch):
     """If SQS fails, the generation should still be created successfully."""
     monkeypatch.setenv("SQS_QUEUE_URL", "https://invalid-queue-url-that-does-not-exist.fake.com")
-
-    factory.get_queue.cache_clear()
 
     _, headers = await create_user_via_api(client, "queue-fail@example.com")
     project = await create_project_via_api(client, headers, "Queue Fail Test")
@@ -83,5 +81,3 @@ async def test_create_generation_queue_failure_doesnt_fail_request(client: httpx
         },
     )
     assert resp.status_code == 202
-
-    factory.get_queue.cache_clear()
