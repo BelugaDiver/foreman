@@ -128,7 +128,10 @@ class GeminiProvider:
                                 mime_type=mime_type,
                             )
                     finally:
-                        os.unlink(local_path)
+                        try:
+                            os.unlink(local_path)
+                        except OSError:
+                            pass  # best-effort cleanup; original exception (if any) takes priority
                 else:
                     input_content = types.Part.from_uri(
                         file_uri=input_image_url,
@@ -172,6 +175,7 @@ class GeminiProvider:
             temp_path = f"/tmp/generated_{os.urandom(8).hex()}.png"
             with open(temp_path, "wb") as f:
                 f.write(image_data)
+            # Caller is responsible for cleaning up this temp file via the file:// URL
 
             output_url = f"file://{temp_path}"
 
@@ -206,11 +210,19 @@ class GeminiProvider:
         except socket.gaierror as exc:
             raise ValueError(f"Cannot resolve image URL host '{hostname}': {exc}") from exc
 
+        if not addr_infos:
+            raise ValueError(f"No addresses resolved for host '{hostname}'")
+
         for *_, sockaddr in addr_infos:
             try:
                 ip = ipaddress.ip_address(sockaddr[0])
             except ValueError:
-                continue
+                raise ValueError(
+                    f"Image URL host '{hostname}' resolved to an address "
+                    f"that could not be validated ({sockaddr[0]}); blocked for security"
+                )
+            # NOTE: Python's ipaddress module returns is_global=True for multicast addresses,
+            # so is_multicast must be checked explicitly — it is NOT redundant.
             if not ip.is_global or ip.is_multicast:
                 raise ValueError(
                     f"Image URL '{hostname}' resolves to a non-global IP ({ip}); "
@@ -234,11 +246,18 @@ class GeminiProvider:
                             .strip()
                         )
                         content_length = response.headers.get("Content-Length")
-                        if content_length and int(content_length) > MAX_DOWNLOAD_BYTES:
-                            raise ValueError(
-                                f"Image response too large: {content_length} bytes "
-                                f"(max {MAX_DOWNLOAD_BYTES})"
-                            )
+                        if content_length:
+                            try:
+                                declared_size = int(content_length)
+                            except ValueError:
+                                pass  # malformed header; streaming cap enforces the limit
+                            else:
+                                if declared_size > MAX_DOWNLOAD_BYTES:
+                                    raise ValueError(
+                                        f"Image response Content-Length "
+                                        f"({declared_size} bytes) exceeds "
+                                        f"limit of {MAX_DOWNLOAD_BYTES} bytes"
+                                    )
                         total = 0
                         with open(temp_path, "wb") as f:
                             while True:
