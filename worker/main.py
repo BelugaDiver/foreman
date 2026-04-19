@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from uvicorn import Config, Server
 
-from foreman.db import Database
+from foreman.db import Database, sql
 from foreman.logging_config import configure_logging, get_logger
 from foreman.queue.settings import SQSSettings
 from foreman.telemetry import setup_telemetry
@@ -45,7 +45,7 @@ async def ready():
         checks["database"] = "not initialized"
     else:
         try:
-            await _db_instance.execute("SELECT 1")
+            await _db_instance.execute(sql("SELECT 1"))
             checks["database"] = "connected"
         except Exception:
             status = "not ready"
