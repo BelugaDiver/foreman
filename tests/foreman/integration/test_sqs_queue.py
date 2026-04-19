@@ -11,10 +11,14 @@ import pytest
 from foreman.queue import factory
 from tests.foreman.integration.conftest import create_project_via_api, create_user_via_api
 
-os.environ["AWS_ACCESS_KEY_ID"] = "test"
-os.environ["AWS_SECRET_ACCESS_KEY"] = "test"
-os.environ["AWS_REGION"] = "us-east-1"
-os.environ["QUEUE_PROVIDER"] = "sqs"
+@pytest.fixture(autouse=True)
+def _aws_env(monkeypatch):
+    """Set AWS environment variables for each test and restore them automatically."""
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.setenv("QUEUE_PROVIDER", "sqs")
+
 
 
 @pytest.mark.asyncio

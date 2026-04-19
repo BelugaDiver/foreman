@@ -198,16 +198,19 @@ class JobProcessor:
             if self.config.r2_public_url:
                 # Use configured public URL (custom CDN domain preferred)
                 public_url = f"{self.config.r2_public_url.rstrip('/')}/{filename}"
-            elif self.config.r2_endpoint:
-                # If we have an endpoint (possibly a custom domain), use it
-                public_url = f"{self.config.r2_endpoint.rstrip('/')}/{filename}"
-            else:
-                # Fallback to default R2 public URL format (bucket.account_id.r2.dev or similar)
-                # Cloudflare suggests using the custom domain if available,
-                # otherwise bucket.account.r2.cloudflarestorage.com is the S3 API endpoint.
-                # Usually users have a public bucket URL configured.
+            elif self.config.r2_account_id:
+                # Use the public r2.dev bucket URL — r2_endpoint is the S3 API endpoint,
+                # not the public-facing URL.
                 public_url = (
                     f"https://{self.config.r2_bucket}.{self.config.r2_account_id}.r2.dev/{filename}"
+                )
+                logger.warning(
+                    "R2_PUBLIC_URL not configured; using r2.dev fallback URL. "
+                    "Set R2_PUBLIC_URL (custom CDN domain) for production use."
+                )
+            else:
+                raise ValueError(
+                    "Cannot construct public R2 URL: neither R2_PUBLIC_URL nor R2_ACCOUNT_ID is set"
                 )
 
             logger.info("Uploaded to R2", extra={"url": public_url})
