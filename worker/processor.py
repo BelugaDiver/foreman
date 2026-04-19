@@ -12,7 +12,7 @@ from uuid import UUID
 import boto3
 from botocore.config import Config as BotoConfig
 from opentelemetry import trace
-from opentelemetry.sdk.trace import StatusCode
+from opentelemetry.trace.status import Status, StatusCode
 
 from foreman.db import Database
 from foreman.logging_config import get_logger
@@ -98,7 +98,7 @@ class JobProcessor:
 
                 span.set_attribute("output_image_url", output_url)
                 span.set_attribute("processing_time_ms", processing_time_ms)
-                span.set_status(StatusCode.OK)
+                span.set_status(Status(StatusCode.OK))
 
                 return ProcessingResult(
                     success=True,
@@ -112,7 +112,7 @@ class JobProcessor:
                 logger.exception("Job failed", extra={"generation_id": job.generation_id})
 
                 span.record_exception(exc)
-                span.set_status(StatusCode.ERROR, "Job processing failed")
+                span.set_status(Status(StatusCode.ERROR, "Job processing failed"))
 
                 error_msg = "Internal processing error"
                 if isinstance(exc, MalformedSQSMessageError):

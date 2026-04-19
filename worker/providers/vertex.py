@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 
