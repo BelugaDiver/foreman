@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import mimetypes
 import os
 import socket
 import urllib.parse
@@ -133,9 +134,11 @@ class GeminiProvider:
                         except OSError:
                             pass  # best-effort cleanup; original exception (if any) takes priority
                 else:
+                    guessed, _ = mimetypes.guess_type(input_image_url)
+                    mime_type = guessed or "image/jpeg"
                     input_content = types.Part.from_uri(
                         file_uri=input_image_url,
-                        mime_type="image/jpeg",
+                        mime_type=mime_type,
                     )
 
             def _generate():
