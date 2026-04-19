@@ -139,7 +139,7 @@ class SQSConsumer:
                 tasks.append(task)
             return tasks
 
-    async def _handle_message(self, msg: dict, retry_count: int = 0):
+    async def _handle_message(self, msg: dict):
         """Handle a single SQS message with semaphore protection."""
         async with self._semaphore:
             client = self._get_client()
