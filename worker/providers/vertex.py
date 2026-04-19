@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import os
+import socket
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -189,32 +190,36 @@ class GeminiProvider:
         Raises:
             ValueError: If the URL fails SSRF validation or download exceeds size limit.
         """
-        import socket as _socket
-
         parsed = urllib.parse.urlparse(url)
 
         # Always require HTTPS regardless of allowlist
         if parsed.scheme != "https":
             raise ValueError(f"Image URL must use HTTPS, got scheme '{parsed.scheme}'")
 
-        # Resolve hostname and block private/loopback/reserved addresses
+        # Resolve all addresses (IPv4 and IPv6) and block non-global/multicast ranges.
+        # Note: urlopen() performs its own DNS resolution; a DNS rebinding attack could
+        # theoretically bypass this check. For a full mitigation, a custom HTTP handler
+        # that connects to the pre-resolved IP would be needed.
+        hostname = parsed.hostname or ""
         try:
-            ip_str = _socket.gethostbyname(parsed.hostname or "")
-            ip = ipaddress.ip_address(ip_str)
-        except (ValueError, _socket.gaierror) as exc:
-            raise ValueError(
-                f"Cannot resolve image URL host '{parsed.hostname}': {exc}"
-            ) from exc
+            addr_infos = socket.getaddrinfo(hostname, None, type=socket.SOCK_STREAM)
+        except socket.gaierror as exc:
+            raise ValueError(f"Cannot resolve image URL host '{hostname}': {exc}") from exc
 
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-            raise ValueError(
-                f"Image URL resolves to a private/reserved IP address ({ip_str}); "
-                "blocked for security"
-            )
+        for *_, sockaddr in addr_infos:
+            try:
+                ip = ipaddress.ip_address(sockaddr[0])
+            except ValueError:
+                continue
+            if not ip.is_global or ip.is_multicast:
+                raise ValueError(
+                    f"Image URL '{hostname}' resolves to a non-global IP ({ip}); "
+                    "blocked for security"
+                )
 
         # Domain allowlist (optional additional restriction on top of baseline SSRF protection)
-        if self.allowed_image_domains and parsed.hostname not in self.allowed_image_domains:
-            raise ValueError(f"Image URL domain not in allowlist: {parsed.hostname}")
+        if self.allowed_image_domains and hostname not in self.allowed_image_domains:
+            raise ValueError(f"Image URL domain not in allowlist: {hostname}")
 
         temp_path = f"/tmp/input_{os.urandom(8).hex()}.bin"
         try:
