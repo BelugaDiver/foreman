@@ -4,9 +4,6 @@ import sys
 from types import ModuleType
 from unittest.mock import MagicMock
 
-import pytest
-
-
 def _install_mocks() -> None:
     """Install sys.modules stubs for external and foreman dependencies.
 

@@ -1,7 +1,6 @@
 """Integration tests for SQS queue publishing."""
 
 import json
-import os
 
 import boto3
 import httpx
@@ -22,7 +21,7 @@ def _aws_env(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_create_generation_publishes_to_sqs(client: httpx.AsyncClient):
+async def test_create_generation_publishes_to_sqs(client: httpx.AsyncClient, monkeypatch):
     """Creating a generation should publish a message to SQS."""
     # Set up mocked SQS
     with moto.mock_aws():
@@ -30,7 +29,7 @@ async def test_create_generation_publishes_to_sqs(client: httpx.AsyncClient):
         queue = sqs.create_queue(QueueName="foreman-generations")
         queue_url = queue["QueueUrl"]
 
-        os.environ["SQS_QUEUE_URL"] = queue_url
+        monkeypatch.setenv("SQS_QUEUE_URL", queue_url)
 
         # Need to reload the factory to pick up the new queue URL
         factory.get_queue.cache_clear()
@@ -64,9 +63,9 @@ async def test_create_generation_publishes_to_sqs(client: httpx.AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_create_generation_queue_failure_doesnt_fail_request(client: httpx.AsyncClient):
+async def test_create_generation_queue_failure_doesnt_fail_request(client: httpx.AsyncClient, monkeypatch):
     """If SQS fails, the generation should still be created successfully."""
-    os.environ["SQS_QUEUE_URL"] = "https://invalid-queue-url-that-does-not-exist.fake.com"
+    monkeypatch.setenv("SQS_QUEUE_URL", "https://invalid-queue-url-that-does-not-exist.fake.com")
 
     factory.get_queue.cache_clear()
 

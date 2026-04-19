@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from worker.consumer import GenerationJob
+
 
 @pytest.fixture
 def mock_db():
