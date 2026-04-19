@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import os
 import urllib.parse
 import urllib.request
@@ -17,6 +18,8 @@ from foreman.logging_config import get_logger
 logger = get_logger("worker.providers.vertex")
 
 tracer = trace.get_tracer(__name__)
+
+MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 
 
 @dataclass
@@ -116,13 +119,15 @@ class GeminiProvider:
             input_content = None
             if input_image_url:
                 if input_image_url.startswith("http"):
-                    local_path = await self._download_image(input_image_url)
-                    with open(local_path, "rb") as f:
-                        input_content = types.Part.from_bytes(
-                            data=f.read(),
-                            mime_type="image/jpeg",
-                        )
-                    os.unlink(local_path)
+                    local_path, mime_type = await self._download_image(input_image_url)
+                    try:
+                        with open(local_path, "rb") as f:
+                            input_content = types.Part.from_bytes(
+                                data=f.read(),
+                                mime_type=mime_type,
+                            )
+                    finally:
+                        os.unlink(local_path)
                 else:
                     input_content = types.Part.from_uri(
                         file_uri=input_image_url,
@@ -175,31 +180,82 @@ class GeminiProvider:
                 model_used=self.image_model,
             )
 
-    async def _download_image(self, url: str) -> str:
-        """Download image from HTTP URL to temp file."""
-        # SSRF protection: validate URL domain
-        if self.allowed_image_domains:
-            parsed = urllib.parse.urlparse(url)
-            if parsed.hostname not in self.allowed_image_domains:
-                raise ValueError(f"Image URL domain not allowed: {parsed.hostname}")
-            if parsed.scheme != "https":
-                raise ValueError("Image URL must use HTTPS")
+    async def _download_image(self, url: str) -> tuple[str, str]:
+        """Download image from HTTP URL to a temp file.
 
-        temp_path = None
+        Returns:
+            Tuple of (local_path, mime_type).
+
+        Raises:
+            ValueError: If the URL fails SSRF validation or download exceeds size limit.
+        """
+        import socket as _socket
+
+        parsed = urllib.parse.urlparse(url)
+
+        # Always require HTTPS regardless of allowlist
+        if parsed.scheme != "https":
+            raise ValueError(f"Image URL must use HTTPS, got scheme '{parsed.scheme}'")
+
+        # Resolve hostname and block private/loopback/reserved addresses
+        try:
+            ip_str = _socket.gethostbyname(parsed.hostname or "")
+            ip = ipaddress.ip_address(ip_str)
+        except (ValueError, _socket.gaierror) as exc:
+            raise ValueError(
+                f"Cannot resolve image URL host '{parsed.hostname}': {exc}"
+            ) from exc
+
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            raise ValueError(
+                f"Image URL resolves to a private/reserved IP address ({ip_str}); "
+                "blocked for security"
+            )
+
+        # Domain allowlist (optional additional restriction on top of baseline SSRF protection)
+        if self.allowed_image_domains and parsed.hostname not in self.allowed_image_domains:
+            raise ValueError(f"Image URL domain not in allowlist: {parsed.hostname}")
+
+        temp_path = f"/tmp/input_{os.urandom(8).hex()}.bin"
         try:
             with tracer.start_as_current_span("download_input_image") as span:
                 span.set_attribute("url", url)
-                temp_path = f"/tmp/input_{os.urandom(8).hex()}.jpg"
 
-                def _download():
+                def _download() -> str:
                     with urllib.request.urlopen(url, timeout=30) as response:
+                        content_type = (
+                            response.headers.get("Content-Type", "image/jpeg")
+                            .split(";")[0]
+                            .strip()
+                        )
+                        content_length = response.headers.get("Content-Length")
+                        if content_length and int(content_length) > MAX_DOWNLOAD_BYTES:
+                            raise ValueError(
+                                f"Image response too large: {content_length} bytes "
+                                f"(max {MAX_DOWNLOAD_BYTES})"
+                            )
+                        total = 0
                         with open(temp_path, "wb") as f:
-                            f.write(response.read())
+                            while True:
+                                chunk = response.read(65536)
+                                if not chunk:
+                                    break
+                                total += len(chunk)
+                                if total > MAX_DOWNLOAD_BYTES:
+                                    raise ValueError(
+                                        f"Image download exceeded {MAX_DOWNLOAD_BYTES} bytes; "
+                                        "aborting (too large)"
+                                    )
+                                f.write(chunk)
+                    return content_type
 
-                await asyncio.to_thread(_download)
-                logger.info("Downloaded input image", extra={"url": url, "path": temp_path})
-                return temp_path
+                mime_type = await asyncio.to_thread(_download)
+                logger.info(
+                    "Downloaded input image",
+                    extra={"url": url, "path": temp_path, "mime": mime_type},
+                )
+                return temp_path, mime_type
         except Exception:
-            if temp_path and os.path.exists(temp_path):
+            if os.path.exists(temp_path):
                 os.unlink(temp_path)
             raise
