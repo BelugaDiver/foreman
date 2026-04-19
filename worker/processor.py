@@ -138,12 +138,7 @@ class JobProcessor:
                     processing_time_ms=processing_time_ms,
                 )
 
-                return ProcessingResult(
-                    success=False,
-                    error_message=error_msg,
-                    processing_time_ms=processing_time_ms,
-                    retry_count=retry_count,
-                )
+                raise
 
     async def _run_agent(self, job: GenerationJob) -> dict:
         """Run the agent graph using AI provider."""
@@ -186,40 +181,44 @@ class JobProcessor:
                 region_name="auto",
             )
 
-            with open(local_path, "rb") as f:
-                await asyncio.to_thread(
-                    client.upload_fileobj,
-                    f,
-                    self.config.r2_bucket,
-                    filename,
-                    ExtraArgs={"ContentType": "image/png"},
-                )
+            try:
+                with open(local_path, "rb") as f:
+                    await asyncio.to_thread(
+                        client.upload_fileobj,
+                        f,
+                        self.config.r2_bucket,
+                        filename,
+                        ExtraArgs={"ContentType": "image/png"},
+                    )
 
-            if self.config.r2_public_url:
-                # Use configured public URL (custom CDN domain preferred)
-                public_url = f"{self.config.r2_public_url.rstrip('/')}/{filename}"
-            elif self.config.r2_account_id:
-                # Use the public r2.dev bucket URL — r2_endpoint is the S3 API endpoint,
-                # not the public-facing URL.
-                public_url = (
-                    f"https://{self.config.r2_bucket}.{self.config.r2_account_id}.r2.dev/{filename}"
-                )
-                logger.warning(
-                    "R2_PUBLIC_URL not configured; using r2.dev fallback URL. "
-                    "Set R2_PUBLIC_URL (custom CDN domain) for production use."
-                )
-            else:
-                raise ValueError(
-                    "Cannot construct public R2 URL: neither R2_PUBLIC_URL nor R2_ACCOUNT_ID is set"
-                )
+                if self.config.r2_public_url:
+                    # Use configured public URL (custom CDN domain preferred)
+                    public_url = f"{self.config.r2_public_url.rstrip('/')}/{filename}"
+                elif self.config.r2_account_id:
+                    # Use the public r2.dev bucket URL — r2_endpoint is the S3 API endpoint,
+                    # not the public-facing URL.
+                    public_url = (
+                        f"https://{self.config.r2_bucket}.{self.config.r2_account_id}.r2.dev/{filename}"
+                    )
+                    logger.warning(
+                        "R2_PUBLIC_URL not configured; using r2.dev fallback URL. "
+                        "Set R2_PUBLIC_URL (custom CDN domain) for production use."
+                    )
+                else:
+                    raise ValueError(
+                        "Cannot construct public R2 URL: neither R2_PUBLIC_URL nor "
+                        "R2_ACCOUNT_ID is set"
+                    )
 
-            logger.info("Uploaded to R2", extra={"url": public_url})
-            span.set_attribute("public_url", public_url)
+                logger.info("Uploaded to R2", extra={"url": public_url})
+                span.set_attribute("public_url", public_url)
 
-            if os.path.exists(local_path):
-                os.unlink(local_path)
-
-            return public_url
+                return public_url
+            finally:
+                try:
+                    os.unlink(local_path)
+                except OSError:
+                    pass
 
     async def _update_status(
         self,
