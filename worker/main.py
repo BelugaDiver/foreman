@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from uvicorn import Config, Server
 
-from foreman.db import Database, sql
+from foreman.db import Database, DatabaseSettings, sql
 from foreman.logging_config import configure_logging, get_logger
 from foreman.queue.settings import SQSSettings
 from foreman.telemetry import setup_telemetry
@@ -90,7 +90,7 @@ async def main():
         logger.error("SQS not configured. Set SQS_QUEUE_URL")
         return
 
-    db = Database.from_env()
+    db = Database(DatabaseSettings.from_env())
     await db.startup()
     _db_instance = db
     logger.info("Database connected")
@@ -121,10 +121,6 @@ async def main():
     _consumer_instance = consumer
 
     shutdown_event = asyncio.Event()
-
-    def signal_handler(sig, frame):
-        logger.info(f"Received signal {sig}, initiating shutdown...")
-        shutdown_event.set()
 
     try:
         loop = asyncio.get_running_loop()
