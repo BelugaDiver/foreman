@@ -34,7 +34,7 @@ services:
     environment:
       - COLLECTOR_OTLP_ENABLED=true
 
-worker:
+  worker:
     build:
       context: .
       dockerfile: Dockerfile.worker

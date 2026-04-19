@@ -4,6 +4,7 @@ WORKDIR /app
 
 # Copy project files
 COPY pyproject.toml .
+COPY README.md .
 COPY foreman ./foreman
 COPY worker ./worker
 
