@@ -65,7 +65,7 @@ class JobProcessor:
             try:
                 # Validate user_id from SQS message matches generation's owner
                 if not job.user_id:
-                    raise ValueError("No user_id in job message")
+                    raise MalformedSQSMessageError("No user_id in job message")
 
                 job_user_id = UUID(job.user_id)
 
@@ -130,13 +130,19 @@ class JobProcessor:
                     except Exception:
                         pass
 
-                await self._update_status(
-                    job.generation_id,
-                    user_id,
-                    "failed",
-                    error_message=error_msg,
-                    processing_time_ms=processing_time_ms,
-                )
+                try:
+                    await self._update_status(
+                        job.generation_id,
+                        user_id,
+                        "failed",
+                        error_message=error_msg,
+                        processing_time_ms=processing_time_ms,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to update status to 'failed'",
+                        extra={"generation_id": job.generation_id},
+                    )
 
                 raise
 
@@ -165,23 +171,23 @@ class JobProcessor:
             filename = f"generations/{uuid.uuid4()}.png"
             span.set_attribute("filename", filename)
 
-            # Robust endpoint handling
-            endpoint_url = self.config.r2_endpoint
-            if not endpoint_url:
-                if not self.config.r2_account_id:
-                    raise ValueError("Neither R2_ENDPOINT nor R2_ACCOUNT_ID is configured")
-                endpoint_url = f"https://{self.config.r2_account_id}.r2.cloudflarestorage.com"
-
-            client = boto3.client(
-                "s3",
-                endpoint_url=endpoint_url,
-                aws_access_key_id=self.config.r2_access_key_id,
-                aws_secret_access_key=self.config.r2_secret_access_key,
-                config=BotoConfig(signature_version="s3v4"),
-                region_name="auto",
-            )
-
             try:
+                # Robust endpoint handling
+                endpoint_url = self.config.r2_endpoint
+                if not endpoint_url:
+                    if not self.config.r2_account_id:
+                        raise ValueError("Neither R2_ENDPOINT nor R2_ACCOUNT_ID is configured")
+                    endpoint_url = f"https://{self.config.r2_account_id}.r2.cloudflarestorage.com"
+
+                client = boto3.client(
+                    "s3",
+                    endpoint_url=endpoint_url,
+                    aws_access_key_id=self.config.r2_access_key_id,
+                    aws_secret_access_key=self.config.r2_secret_access_key,
+                    config=BotoConfig(signature_version="s3v4"),
+                    region_name="auto",
+                )
+
                 with open(local_path, "rb") as f:
                     await asyncio.to_thread(
                         client.upload_fileobj,
