@@ -135,6 +135,11 @@ class GeminiProvider:
                             pass  # best-effort cleanup; original exception (if any) takes priority
                 else:
                     guessed, _ = mimetypes.guess_type(input_image_url)
+                    if guessed and not guessed.startswith("image/"):
+                        raise ValueError(
+                            f"Non-HTTP image URI has an unrecognised image extension "
+                            f"(resolved MIME type '{guessed}'): {input_image_url}"
+                        )
                     mime_type = guessed or "image/jpeg"
                     input_content = types.Part.from_uri(
                         file_uri=input_image_url,
