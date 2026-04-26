@@ -7,6 +7,7 @@ import ipaddress
 import mimetypes
 import os
 import socket
+import tempfile
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -64,7 +65,7 @@ class GeminiProvider:
     async def enhance_prompt(self, prompt: str, input_image_url: str) -> str:
         """Enhance prompt using cheaper Gemini 2.0 Flash model."""
         with tracer.start_as_current_span("enhance_prompt") as span:
-            span.set_attribute("original_prompt", prompt)
+            span.set_attribute("prompt_length", len(prompt))
             logger.info(
                 "Enhancing prompt",
                 extra={"model": self.enhancement_model, "prompt_length": len(prompt)},
@@ -85,7 +86,7 @@ class GeminiProvider:
 
             enhanced = await asyncio.to_thread(_enhance)
             logger.info("Prompt enhanced", extra={"enhanced_prompt_length": len(enhanced)})
-            span.set_attribute("enhanced_prompt", enhanced)
+            span.set_attribute("enhanced_prompt_length", len(enhanced))
             return enhanced
 
     async def generate(
@@ -101,7 +102,7 @@ class GeminiProvider:
         Downloads input image if it's an HTTP URL (Gemini only accepts gs:// URIs).
         """
         with tracer.start_as_current_span("generate_image") as span:
-            span.set_attribute("prompt", prompt)
+            span.set_attribute("prompt_length", len(prompt))
             span.set_attribute("has_input_image", input_image_url is not None)
 
             final_prompt = prompt
@@ -112,7 +113,6 @@ class GeminiProvider:
             logger.info(
                 "Generating with Gemini",
                 extra={
-                    "prompt": final_prompt,
                     "model": self.image_model,
                     "has_input_image": input_image_url is not None,
                 },
@@ -180,9 +180,16 @@ class GeminiProvider:
             if not image_data:
                 raise ValueError("No image generated in response")
 
-            temp_path = f"/tmp/generated_{os.urandom(8).hex()}.png"
-            with open(temp_path, "wb") as f:
-                f.write(image_data)
+            fd, temp_path = tempfile.mkstemp(suffix=".png", prefix="generated_")
+            try:
+                with os.fdopen(fd, "wb") as f:
+                    f.write(image_data)
+            except Exception:
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+                raise
             # Caller is responsible for cleaning up this temp file via the file:// URL
 
             output_url = f"file://{temp_path}"
@@ -241,7 +248,8 @@ class GeminiProvider:
         if self.allowed_image_domains and hostname not in self.allowed_image_domains:
             raise ValueError(f"Image URL domain not in allowlist: {hostname}")
 
-        temp_path = f"/tmp/input_{os.urandom(8).hex()}.bin"
+        fd, temp_path = tempfile.mkstemp(suffix=".bin", prefix="input_")
+        os.close(fd)  # _download() will open and write the file separately
         try:
             with tracer.start_as_current_span("download_input_image") as span:
                 span.set_attribute("url", url)
