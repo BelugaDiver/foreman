@@ -33,4 +33,5 @@ jobs:
 
       - name: Check coverage
         run: |
-          pytest tests/foreman/ tests/worker/ --ignore=tests/foreman/integration --cov=foreman --cov=worker --cov-report=term --cov-fail-under=85
+          pytest tests/foreman/ --ignore=tests/foreman/integration --cov=foreman --cov=worker --cov-report=term
+          pytest tests/worker/ --cov=foreman --cov=worker --cov-append --cov-report=term --cov-fail-under=85
