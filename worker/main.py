@@ -117,6 +117,8 @@ async def main():
         max_retries=config.max_retries,
         poll_interval=config.poll_interval,
         visibility_timeout=config.visibility_timeout,
+        aws_access_key_id=config.aws_access_key_id,
+        aws_secret_access_key=config.aws_secret_access_key,
     )
     _consumer_instance = consumer
 

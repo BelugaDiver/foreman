@@ -44,6 +44,13 @@ class WorkerConfig:
     r2_access_key_id: str = field(default_factory=lambda: os.getenv("R2_ACCESS_KEY_ID", ""))
     r2_secret_access_key: str = field(default_factory=lambda: os.getenv("R2_SECRET_ACCESS_KEY", ""))
 
+    aws_access_key_id: str | None = field(
+        default_factory=lambda: os.getenv("AWS_ACCESS_KEY_ID")
+    )
+    aws_secret_access_key: str | None = field(
+        default_factory=lambda: os.getenv("AWS_SECRET_ACCESS_KEY")
+    )
+
     @classmethod
     def from_env(cls) -> "WorkerConfig":
         return cls()

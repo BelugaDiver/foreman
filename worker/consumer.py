@@ -81,6 +81,8 @@ class SQSConsumer:
         max_retries: int = 3,
         poll_interval: int = 10,
         visibility_timeout: int = 300,
+        aws_access_key_id: str | None = None,
+        aws_secret_access_key: str | None = None,
     ):
         self.queue_url = queue_url
         self.process_fn = process_fn
@@ -88,6 +90,8 @@ class SQSConsumer:
         self.max_retries = max_retries
         self.poll_interval = poll_interval
         self.visibility_timeout = visibility_timeout
+        self.aws_access_key_id = aws_access_key_id
+        self.aws_secret_access_key = aws_secret_access_key
         self._client = None
         self._running = False
         self._semaphore = asyncio.Semaphore(concurrency)
@@ -98,8 +102,8 @@ class SQSConsumer:
             self._client = boto3.client(
                 "sqs",
                 region_name=os.getenv("AWS_REGION", "us-east-1"),
-                aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-                aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+                aws_access_key_id=self.aws_access_key_id,
+                aws_secret_access_key=self.aws_secret_access_key,
                 config=Config(retries={"max_attempts": 3, "mode": "standard"}),
             )
         return self._client
