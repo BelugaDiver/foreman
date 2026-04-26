@@ -50,6 +50,9 @@ class WorkerConfig:
     aws_secret_access_key: str | None = field(
         default_factory=lambda: os.getenv("AWS_SECRET_ACCESS_KEY")
     )
+    aws_region: str = field(
+        default_factory=lambda: os.getenv("AWS_REGION", "us-east-1")
+    )
 
     @classmethod
     def from_env(cls) -> "WorkerConfig":

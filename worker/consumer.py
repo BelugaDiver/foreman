@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 from dataclasses import dataclass
 from typing import Callable
 
@@ -83,6 +82,7 @@ class SQSConsumer:
         visibility_timeout: int = 300,
         aws_access_key_id: str | None = None,
         aws_secret_access_key: str | None = None,
+        aws_region: str = "us-east-1",
     ):
         self.queue_url = queue_url
         self.process_fn = process_fn
@@ -92,6 +92,7 @@ class SQSConsumer:
         self.visibility_timeout = visibility_timeout
         self.aws_access_key_id = aws_access_key_id
         self.aws_secret_access_key = aws_secret_access_key
+        self.aws_region = aws_region
         self._client = None
         self._running = False
         self._semaphore = asyncio.Semaphore(concurrency)
@@ -101,7 +102,7 @@ class SQSConsumer:
         if self._client is None:
             self._client = boto3.client(
                 "sqs",
-                region_name=os.getenv("AWS_REGION", "us-east-1"),
+                region_name=self.aws_region,
                 aws_access_key_id=self.aws_access_key_id,
                 aws_secret_access_key=self.aws_secret_access_key,
                 config=Config(retries={"max_attempts": 3, "mode": "standard"}),

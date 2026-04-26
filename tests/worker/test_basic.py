@@ -23,7 +23,7 @@ def mock_ai_provider():
     provider.generate = AsyncMock(
         return_value=MagicMock(
             output_image_url="file:///tmp/test.png",
-            model_used="gemini-3.1-flash-image",
+            model_used="gemini-3.1-flash-image-preview",
         )
     )
     return provider

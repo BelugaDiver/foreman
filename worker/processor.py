@@ -59,7 +59,7 @@ class JobProcessor:
         with tracer.start_as_current_span("process_generation") as span:
             span.set_attribute("generation_id", job.generation_id)
             span.set_attribute("project_id", job.project_id)
-            span.set_attribute("prompt", job.prompt)
+            span.set_attribute("prompt_length", len(job.prompt))
             span.set_attribute("retry_count", retry_count)
 
             try:

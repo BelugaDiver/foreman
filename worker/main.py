@@ -119,6 +119,7 @@ async def main():
         visibility_timeout=config.visibility_timeout,
         aws_access_key_id=config.aws_access_key_id,
         aws_secret_access_key=config.aws_secret_access_key,
+        aws_region=config.aws_region,
     )
     _consumer_instance = consumer
 
@@ -144,8 +145,7 @@ async def main():
             tg.create_task(wait_for_shutdown())
     except* Exception as eg:
         for exc in eg.exceptions:
-            if not isinstance(exc, asyncio.CancelledError):
-                logger.exception("Consumer task failed", extra={"error": str(exc)})
+            logger.exception("Consumer task failed", extra={"error": str(exc)})
     finally:
         await consumer.stop(timeout=60.0)
         health_server.should_exit = True
