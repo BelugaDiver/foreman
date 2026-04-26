@@ -217,6 +217,8 @@ class SQSConsumer:
 
     async def stop(self, timeout: float = 30.0):
         """Stop the consumer gracefully, waiting for in-flight jobs."""
+        if not self._running and not self._in_flight:
+            return  # already stopped
         logger.info("Stopping consumer...")
         self._running = False
 

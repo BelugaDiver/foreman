@@ -41,7 +41,7 @@ class GeminiProvider:
         self,
         project_id: str | None = None,
         location: str = "us-central1",
-        image_model: str = "gemini-3.1-flash-image",
+        image_model: str = "gemini-3.1-flash-image-preview",
         enhancement_model: str = "gemini-2.0-flash",
         allowed_image_domains: set[str] | None = None,
     ):

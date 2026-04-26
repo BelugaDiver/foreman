@@ -31,7 +31,7 @@ class WorkerConfig:
         default_factory=lambda: os.getenv("GOOGLE_LOCATION", "us-central1")
     )
     gemini_image_model: str = field(
-        default_factory=lambda: os.getenv("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image")
+        default_factory=lambda: os.getenv("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image-preview")
     )
     gemini_enhancement_model: str = field(
         default_factory=lambda: os.getenv("GEMINI_ENHANCEMENT_MODEL", "gemini-2.0-flash")

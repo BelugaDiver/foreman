@@ -137,9 +137,13 @@ async def main():
         await consumer.stop(timeout=60.0)
 
     try:
-        await asyncio.gather(run_consumer(), wait_for_shutdown(), return_exceptions=False)
-    except asyncio.CancelledError:
-        logger.info("Consumer cancelled")
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(run_consumer())
+            tg.create_task(wait_for_shutdown())
+    except* Exception as eg:
+        for exc in eg.exceptions:
+            if not isinstance(exc, asyncio.CancelledError):
+                logger.exception("Consumer task failed", extra={"error": str(exc)})
     finally:
         await consumer.stop(timeout=60.0)
         health_server.should_exit = True

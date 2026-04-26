@@ -19,6 +19,9 @@ class AgentGraph:
     """Wrapper for your custom agent graph.
 
     This is where your agent graph integration goes.
+
+    NOTE: This class is not yet integrated into the active processing pipeline.
+    The active path is worker/providers/vertex.py (GeminiProvider).
     """
 
     async def run(
@@ -44,8 +47,7 @@ class AgentGraph:
             extra={"input_image": input_image_path, "prompt": prompt},
         )
 
-        return AgentResult(
-            output_image_url="https://example.com/generated.jpg",
-            iterations=1,
-            metadata={"placeholder": True},
+        raise NotImplementedError(
+            "AgentGraph.run() is not yet implemented. "
+            "Integrate your custom agent pipeline here."
         )

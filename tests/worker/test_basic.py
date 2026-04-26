@@ -288,33 +288,28 @@ async def test_sqs_consumer_handles_gracefully():
 
 @pytest.mark.asyncio
 async def test_agent_graph_run():
-    """Test agent graph returns result."""
-    from worker.agent import AgentGraph, AgentResult
+    """Test agent graph raises NotImplementedError."""
+    from worker.agent import AgentGraph
 
     agent = AgentGraph()
 
-    result = await agent.run(
-        input_image_path="/tmp/input.jpg",
-        prompt="make it modern",
-        style_id="modern",
-    )
-
-    assert isinstance(result, AgentResult)
-    assert result.output_image_url is not None
-    assert result.iterations >= 1
+    with pytest.raises(NotImplementedError, match="AgentGraph.run\\(\\) is not yet implemented"):
+        await agent.run(
+            input_image_path="/tmp/input.jpg",
+            prompt="make it modern",
+            style_id="modern",
+        )
 
 
 @pytest.mark.asyncio
 async def test_agent_graph_without_style():
-    """Test agent graph works without style."""
-    from worker.agent import AgentGraph, AgentResult
+    """Test agent graph raises NotImplementedError without style."""
+    from worker.agent import AgentGraph
 
     agent = AgentGraph()
 
-    result = await agent.run(
-        input_image_path="/tmp/input.jpg",
-        prompt="make it modern",
-    )
-
-    assert isinstance(result, AgentResult)
-    assert result.metadata is not None
+    with pytest.raises(NotImplementedError, match="AgentGraph.run\\(\\) is not yet implemented"):
+        await agent.run(
+            input_image_path="/tmp/input.jpg",
+            prompt="make it modern",
+        )
