@@ -17,6 +17,7 @@ dependencies = [
     "psycopg[binary]>=3.2.10",
     "python-dotenv>=1.2.2",
     "boto3>=1.41.0",
+    "google-genai>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -30,6 +31,7 @@ dev = [
     "psycopg2-binary>=2.9.11",
     "testcontainers>=4.14.1",
     "sqlparse>=0.5.0",
+    "moto>=5.0.0",
 ]
 
 [build-system]
@@ -42,7 +44,7 @@ include = ["foreman*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]

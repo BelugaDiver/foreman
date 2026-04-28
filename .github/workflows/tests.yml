@@ -20,12 +20,18 @@ jobs:
         run: |
           pip install -e ".[dev]"
 
-      - name: Run unit tests
-        run: pytest tests/ --ignore=tests/integration -v
+      - name: Run foreman unit tests
+        run: pytest tests/foreman/ --ignore=tests/foreman/integration -v
+
+      - name: Run worker unit tests
+        run: pytest tests/worker/ -v
 
       - name: Run integration tests
-        run: pytest tests/integration -v
+        run: |
+          docker info
+          pytest tests/foreman/integration -v
 
       - name: Check coverage
         run: |
-          pytest --cov=foreman --cov-report=term --cov-fail-under=85
+          pytest tests/foreman/ --ignore=tests/foreman/integration --cov=foreman --cov=worker --cov-report=term
+          pytest tests/worker/ --cov=foreman --cov=worker --cov-append --cov-report=term --cov-fail-under=85

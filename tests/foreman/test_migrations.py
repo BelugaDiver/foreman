@@ -200,10 +200,12 @@ class TestMigrationIntegration:
             env=env,
             capture_output=True,
             text=True,
-            cwd=Path(__file__).parent.parent,
+            cwd=Path(__file__).parent.parent.parent,
         )
 
         assert result.returncode == 0, f"Migrations failed: {result.stderr}"
+        if result.stdout:
+            print(f"Migrations output: {result.stdout}")
 
         expected_tables = ["users", "projects", "generations", "images", "styles"]
 
