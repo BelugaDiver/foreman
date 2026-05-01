@@ -47,12 +47,21 @@ def _make_job(user_id: str | None = str(_USER_ID)) -> GenerationJob:
     )
 
 
-def _make_processor(config=None, ai_provider=None) -> JobProcessor:
+def _make_storage(download_url: str = "https://cdn.example.com/generations/test.png") -> AsyncMock:
+    """Create a mock StorageProtocol instance."""
+    storage = AsyncMock()
+    storage.upload_file = AsyncMock(return_value=None)
+    storage.get_download_url = AsyncMock(return_value=download_url)
+    return storage
+
+
+def _make_processor(config=None, ai_provider=None, storage=None) -> JobProcessor:
     db = MagicMock()
     return JobProcessor(
         db=db,
         config=config or _make_config(),
         ai_provider=ai_provider or MagicMock(),
+        storage=storage or _make_storage(),
     )
 
 
@@ -111,93 +120,98 @@ async def test_run_agent_returns_dict_with_path():
 # _upload_to_storage
 # ---------------------------------------------------------------------------
 
-async def test_upload_to_storage_with_r2_public_url():
-    """When r2_public_url is set, returned URL uses that domain."""
-    config = _make_config(r2_public_url="https://cdn.example.com")
-    processor = _make_processor(config=config)
+async def test_upload_to_storage_calls_upload_file_and_get_download_url():
+    """_upload_to_storage calls storage.upload_file then storage.get_download_url."""
+    storage = _make_storage()
+    processor = _make_processor(storage=storage)
 
     fd, path = tempfile.mkstemp(suffix=".png")
     os.close(fd)
     try:
-        with patch("worker.processor.boto3.client") as mock_boto3:
-            mock_s3 = MagicMock()
-            mock_boto3.return_value = mock_s3
-            with patch("worker.processor.asyncio.to_thread", new=AsyncMock(return_value=None)):
-                url = await processor._upload_to_storage(path)
-        assert url.startswith("https://cdn.example.com/generations/")
+        url = await processor._upload_to_storage(path)
+        
+        # Verify both storage methods were called
+        storage.upload_file.assert_called_once()
+        storage.get_download_url.assert_called_once()
+        
+        # Verify arguments
+        call_args = storage.upload_file.call_args
+        assert call_args[0][0] == path
+        assert call_args[0][1].startswith("generations/")
+        
+        # Verify returned URL
+        assert url == "https://cdn.example.com/generations/test.png"
     finally:
         if os.path.exists(path):
             os.unlink(path)
 
 
-async def test_upload_to_storage_r2_dev_fallback():
-    """When r2_public_url is empty but r2_account_id is set → r2.dev fallback URL."""
-    config = _make_config(r2_public_url="", r2_account_id="acct123", r2_endpoint="")
-    processor = _make_processor(config=config)
-
-    fd, path = tempfile.mkstemp(suffix=".png")
-    os.close(fd)
-    try:
-        with patch("worker.processor.boto3.client") as mock_boto3:
-            mock_s3 = MagicMock()
-            mock_boto3.return_value = mock_s3
-            with patch("worker.processor.asyncio.to_thread", new=AsyncMock(return_value=None)):
-                url = await processor._upload_to_storage(path)
-        assert "acct123.r2.dev" in url
-    finally:
-        if os.path.exists(path):
-            os.unlink(path)
-
-
-async def test_upload_to_storage_raises_when_no_url_and_no_account():
-    """Raises ValueError when neither r2_public_url nor r2_account_id is set."""
-    config = _make_config(r2_public_url="", r2_account_id="")
-    processor = _make_processor(config=config)
-
-    fd, path = tempfile.mkstemp(suffix=".png")
-    os.close(fd)
-    try:
-        with patch("worker.processor.boto3.client") as mock_boto3:
-            mock_s3 = MagicMock()
-            mock_boto3.return_value = mock_s3
-            with patch("worker.processor.asyncio.to_thread", new=AsyncMock(return_value=None)):
-                with pytest.raises(ValueError, match="R2_PUBLIC_URL"):
-                    await processor._upload_to_storage(path)
-    finally:
-        if os.path.exists(path):
-            os.unlink(path)
-
-
-async def test_upload_to_storage_no_endpoint_no_account_raises():
-    """Raises ValueError when neither r2_endpoint nor r2_account_id is configured."""
-    config = _make_config(r2_public_url="", r2_endpoint="", r2_account_id="")
-    processor = _make_processor(config=config)
-
-    fd, path = tempfile.mkstemp(suffix=".png")
-    os.close(fd)
-    try:
-        with patch("worker.processor.boto3.client"):
-            with pytest.raises(ValueError, match="R2_ENDPOINT|R2_ACCOUNT_ID"):
-                await processor._upload_to_storage(path)
-    finally:
-        if os.path.exists(path):
-            os.unlink(path)
-
-
-async def test_upload_to_storage_unlinks_local_file():
-    """_upload_to_storage always removes the local temp file."""
-    config = _make_config(r2_public_url="https://cdn.example.com")
-    processor = _make_processor(config=config)
+async def test_upload_to_storage_deletes_local_file_on_success():
+    """_upload_to_storage deletes the local file after successful upload."""
+    storage = _make_storage()
+    processor = _make_processor(storage=storage)
 
     fd, path = tempfile.mkstemp(suffix=".png")
     os.close(fd)
     assert os.path.exists(path)
 
-    with patch("worker.processor.boto3.client"):
-        with patch("worker.processor.asyncio.to_thread", new=AsyncMock(return_value=None)):
-            await processor._upload_to_storage(path)
-
+    await processor._upload_to_storage(path)
     assert not os.path.exists(path)
+
+
+async def test_upload_to_storage_deletes_local_file_on_failure():
+    """_upload_to_storage deletes the local file even when upload_file raises."""
+    storage = _make_storage()
+    storage.upload_file = AsyncMock(side_effect=RuntimeError("upload failed"))
+    processor = _make_processor(storage=storage)
+
+    fd, path = tempfile.mkstemp(suffix=".png")
+    os.close(fd)
+    assert os.path.exists(path)
+
+    with pytest.raises(RuntimeError, match="upload failed"):
+        await processor._upload_to_storage(path)
+    
+    # File should still be deleted
+    assert not os.path.exists(path)
+
+
+async def test_upload_to_storage_propagates_storage_error():
+    """_upload_to_storage propagates exception from storage.upload_file."""
+    storage = _make_storage()
+    storage.upload_file = AsyncMock(side_effect=RuntimeError("S3 error"))
+    processor = _make_processor(storage=storage)
+
+    fd, path = tempfile.mkstemp(suffix=".png")
+    os.close(fd)
+    try:
+        with pytest.raises(RuntimeError, match="S3 error"):
+            await processor._upload_to_storage(path)
+    finally:
+        if os.path.exists(path):
+            os.unlink(path)
+
+
+async def test_process_with_r2_storage_via_protocol():
+    """Full success path using storage protocol (R2 in this case)."""
+    storage = _make_storage(download_url="https://r2-cdn.example.com/gen/abc.png")
+    processor = _make_processor(storage=storage)
+    job = _make_job()
+
+    gen_record = _make_gen_record()
+
+    with patch("worker.processor.gen_repo.get_generation_by_id", new=AsyncMock(return_value=gen_record)):
+        with patch("worker.processor.gen_repo.update_generation", new=AsyncMock()):
+            processor._run_agent = AsyncMock(return_value={"output_image_path": "/fake/path.png", "model_used": "m"})
+
+            result = await processor.process(job, retry_count=0)
+
+    assert result.success is True
+    assert result.output_image_url == "https://r2-cdn.example.com/gen/abc.png"
+    processor._run_agent.assert_called_once_with(job)
+    storage.upload_file.assert_called_once()
+    storage.get_download_url.assert_called_once()
+
 
 
 # ---------------------------------------------------------------------------
@@ -215,14 +229,14 @@ async def test_process_success():
     with patch("worker.processor.gen_repo.get_generation_by_id", new=AsyncMock(return_value=gen_record)):
         with patch("worker.processor.gen_repo.update_generation", new=AsyncMock()):
             processor._run_agent = AsyncMock(return_value={"output_image_path": "/fake/path.png", "model_used": "m"})
-            processor._upload_to_storage = AsyncMock(return_value=output_url)
+            processor._storage.get_download_url = AsyncMock(return_value=output_url)
 
             result = await processor.process(job, retry_count=0)
 
     assert result.success is True
     assert result.output_image_url == output_url
     processor._run_agent.assert_called_once_with(job)
-    processor._upload_to_storage.assert_called_once_with("/fake/path.png")
+    processor._storage.upload_file.assert_called_once()
 
 
 async def test_process_no_user_id_raises():
@@ -257,7 +271,6 @@ async def test_process_run_agent_exception_updates_failed_and_reraises():
     with patch("worker.processor.gen_repo.get_generation_by_id", new=AsyncMock(return_value=gen_record)):
         with patch("worker.processor.gen_repo.update_generation", new=AsyncMock()) as mock_update:
             processor._run_agent = AsyncMock(side_effect=RuntimeError("agent exploded"))
-            processor._upload_to_storage = AsyncMock()
 
             with pytest.raises(RuntimeError, match="agent exploded"):
                 await processor.process(job)
@@ -286,7 +299,6 @@ async def test_process_get_generation_raises_in_error_path():
     with patch("worker.processor.gen_repo.get_generation_by_id", side_effect=fake_get_gen):
         with patch("worker.processor.gen_repo.update_generation", new=AsyncMock()):
             processor._run_agent = AsyncMock(side_effect=RuntimeError("boom"))
-            processor._upload_to_storage = AsyncMock()
 
             with pytest.raises(RuntimeError, match="boom"):
                 await processor.process(job)
@@ -310,7 +322,6 @@ async def test_process_update_status_raises_during_failed_update():
 
         with patch("worker.processor.gen_repo.update_generation", side_effect=fake_update):
             processor._run_agent = AsyncMock(side_effect=RuntimeError("agent error"))
-            processor._upload_to_storage = AsyncMock()
 
             with pytest.raises(RuntimeError, match="agent error"):
                 await processor.process(job)
@@ -318,17 +329,15 @@ async def test_process_update_status_raises_during_failed_update():
 
 async def test_upload_to_storage_os_unlink_raises_oserror():
     """_upload_to_storage swallows OSError from os.unlink in finally."""
-    config = _make_config(r2_public_url="https://cdn.example.com")
-    processor = _make_processor(config=config)
+    storage = _make_storage()
+    processor = _make_processor(storage=storage)
 
     fd, path = tempfile.mkstemp(suffix=".png")
     os.close(fd)
 
-    with patch("worker.processor.boto3.client"):
-        with patch("worker.processor.asyncio.to_thread", new=AsyncMock(return_value=None)):
-            with patch("worker.processor.os.unlink", side_effect=OSError("busy")):
-                # Should not raise - OSError is swallowed
-                url = await processor._upload_to_storage(path)
+    with patch("worker.processor.os.unlink", side_effect=OSError("busy")):
+        # Should not raise - OSError is swallowed
+        url = await processor._upload_to_storage(path)
 
     assert url.startswith("https://cdn.example.com/")
     # Cleanup (unlink was patched so file still exists)

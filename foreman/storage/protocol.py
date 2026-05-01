@@ -36,3 +36,12 @@ class StorageProtocol(ABC):
     @abstractmethod
     async def delete(self, storage_key: str) -> bool:
         """Delete a file from storage."""
+
+    @abstractmethod
+    async def upload_file(self, local_path: str, storage_key: str) -> None:
+        """Upload a local file directly to storage at the given key.
+
+        Args:
+            local_path: Absolute path of the local file to upload.
+            storage_key: Destination key in the storage bucket.
+        """

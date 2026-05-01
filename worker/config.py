@@ -61,6 +61,7 @@ class WorkerConfig:
     def get_allowed_image_domains(self) -> set[str]:
         """Get allowed domains for input image downloads (SSRF protection)."""
         domains = set()
+        # R2
         if self.r2_public_url:
             parsed = urllib.parse.urlparse(self.r2_public_url)
             if parsed.hostname:
@@ -69,6 +70,16 @@ class WorkerConfig:
             parsed = urllib.parse.urlparse(self.r2_endpoint)
             if parsed.hostname:
                 domains.add(parsed.hostname)
+        # S3
+        s3_public_url = os.getenv("S3_PUBLIC_URL")
+        if s3_public_url:
+            parsed = urllib.parse.urlparse(s3_public_url)
+            if parsed.hostname:
+                domains.add(parsed.hostname)
+        s3_bucket = os.getenv("S3_BUCKET")
+        s3_region = os.getenv("S3_REGION", "us-east-1")
+        if s3_bucket:
+            domains.add(f"{s3_bucket}.s3.{s3_region}.amazonaws.com")
         return domains
 
 

@@ -8,7 +8,8 @@ from functools import lru_cache
 from foreman.logging_config import get_logger
 from foreman.storage.protocol import StorageProtocol
 from foreman.storage.r2_storage import R2Storage
-from foreman.storage.settings import R2Settings
+from foreman.storage.s3_storage import S3Storage
+from foreman.storage.settings import R2Settings, S3Settings
 
 logger = get_logger("foreman.storage")
 
@@ -24,7 +25,12 @@ def get_storage() -> StorageProtocol:
         logger.info("Storage initialized", extra={"provider": provider})
         return storage
 
-    raise ValueError(f"Unknown STORAGE_PROVIDER: {provider}")
+    if provider == "s3":
+        storage = S3Storage(S3Settings.from_env())
+        logger.info("Storage initialized", extra={"provider": provider})
+        return storage
+
+    raise ValueError(f"Unknown STORAGE_PROVIDER: {provider!r}. Valid values: r2, s3")
 
 
 def get_storage_sync() -> StorageProtocol:

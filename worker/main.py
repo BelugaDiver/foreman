@@ -11,6 +11,7 @@ from uvicorn import Config, Server
 from foreman.db import Database, DatabaseSettings, sql
 from foreman.logging_config import configure_logging, get_logger
 from foreman.queue.settings import SQSSettings
+from foreman.storage import get_storage
 from foreman.telemetry import setup_telemetry
 from worker.config import get_worker_config
 from worker.consumer import SQSConsumer
@@ -104,11 +105,13 @@ async def main():
         allowed_image_domains=config.get_allowed_image_domains(),
     )
 
+    storage = get_storage()
+
     health_server = Server(Config(app=health_app, host="0.0.0.0", port=8081, log_level="warning"))
     health_task = asyncio.create_task(health_server.serve())
     logger.info("Health server started on port 8081")
 
-    processor = JobProcessor(db, config, ai_provider)
+    processor = JobProcessor(db, config, ai_provider, storage)
 
     consumer = SQSConsumer(
         queue_url=sqs_settings.queue_url,
