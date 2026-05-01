@@ -14,6 +14,10 @@
 - Types: Pydantic v2 for schemas, @dataclass for domain objects
 - Error handling: Use HTTPException for API errors, try/except for external calls
 
+## Commit Conventions
+- Never add `Co-authored-by: Copilot` or any Copilot attribution to commit messages
+- Keep commit messages clean — authored solely by the human developer
+
 ## Key References
 - Detailed architecture: `instructions/ARCHITECTURE.md`
 - Testing standards: `instructions/TESTING.md`
