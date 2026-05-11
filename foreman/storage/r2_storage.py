@@ -6,7 +6,6 @@ import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
 
-import anyio
 import boto3
 from botocore.config import Config
 
@@ -104,7 +103,7 @@ class R2Storage(StorageProtocol):
 
         logger.info("Deleting object from R2", extra={"storage_key": storage_key})
         try:
-            await anyio.to_thread.run_sync(
+            await asyncio.to_thread(
                 self._client.delete_object,
                 Bucket=self._bucket,
                 Key=storage_key,

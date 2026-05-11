@@ -114,7 +114,8 @@ class S3Storage(StorageProtocol):
                 )
             except Exception as e:
                 span.set_attribute("outcome", "error")
-                logger.error("Failed to generate upload URL", extra={"error": str(e)})
+                span.record_exception(e)
+                logger.exception("Failed to generate upload URL")
                 raise
 
     async def get_download_url(self, storage_key: str) -> str:
@@ -156,7 +157,8 @@ class S3Storage(StorageProtocol):
                 return url
             except Exception as e:
                 span.set_attribute("outcome", "error")
-                logger.error("Failed to get download URL", extra={"error": str(e)})
+                span.record_exception(e)
+                logger.exception("Failed to get download URL")
                 raise
 
     async def delete(self, storage_key: str) -> bool:
@@ -185,10 +187,8 @@ class S3Storage(StorageProtocol):
                 return True
             except ClientError as e:
                 span.set_attribute("outcome", "error")
-                logger.error(
-                    "Failed to delete object from S3",
-                    extra={"storage_key": storage_key, "error": str(e)},
-                )
+                span.record_exception(e)
+                logger.exception("Failed to delete object from S3", extra={"storage_key": storage_key})
                 return False
 
     async def upload_file(self, local_path: str, storage_key: str) -> None:
@@ -221,8 +221,6 @@ class S3Storage(StorageProtocol):
                 logger.info("Uploaded file to S3", extra={"storage_key": storage_key})
             except Exception as e:
                 span.set_attribute("outcome", "error")
-                logger.error(
-                    "Failed to upload file to S3",
-                    extra={"storage_key": storage_key, "error": str(e)},
-                )
+                span.record_exception(e)
+                logger.exception("Failed to upload file to S3", extra={"storage_key": storage_key})
                 raise

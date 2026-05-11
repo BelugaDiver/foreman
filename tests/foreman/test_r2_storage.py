@@ -94,8 +94,8 @@ async def test_delete_returns_true_on_success(configured_settings):
     storage._client = MagicMock()
     storage._client.delete_object = MagicMock()
 
-    with patch("foreman.storage.r2_storage.anyio.to_thread.run_sync") as mock_run_sync:
-        mock_run_sync.return_value = None
+    with patch("foreman.storage.r2_storage.asyncio.to_thread") as mock_to_thread:
+        mock_to_thread.return_value = None
         result = await storage.delete("some/key")
 
     assert result is True

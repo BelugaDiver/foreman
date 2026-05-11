@@ -80,6 +80,8 @@ class WorkerConfig:
         s3_region = os.getenv("S3_REGION", "us-east-1")
         if s3_bucket:
             domains.add(f"{s3_bucket}.s3.{s3_region}.amazonaws.com")
+            # Also allow the non-regional us-east-1 hostname used by boto3 presigned URLs
+            domains.add(f"{s3_bucket}.s3.amazonaws.com")
         return domains
 
 
