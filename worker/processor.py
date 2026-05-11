@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
 import time
 import uuid
 from dataclasses import dataclass
 from uuid import UUID
 
-import boto3
-from botocore.config import Config as BotoConfig
 from opentelemetry import trace
 from opentelemetry.trace.status import Status, StatusCode
 
@@ -18,6 +15,7 @@ from foreman.db import Database
 from foreman.logging_config import get_logger
 from foreman.repositories import postgres_generations_repository as gen_repo
 from foreman.schemas.generation import GenerationUpdate
+from foreman.storage.protocol import StorageProtocol
 from worker.config import WorkerConfig
 from worker.consumer import GenerationJob, MalformedSQSMessageError
 
@@ -44,10 +42,11 @@ class JobProcessor:
     Includes OTEL tracing for observability.
     """
 
-    def __init__(self, db: Database, config: WorkerConfig, ai_provider):
+    def __init__(self, db: Database, config: WorkerConfig, ai_provider, storage: StorageProtocol):
         self.db = db
         self.config = config
         self.ai_provider = ai_provider
+        self._storage = storage
 
     async def process(self, job: GenerationJob, retry_count: int = 0) -> ProcessingResult:
         """Process a generation job."""
@@ -166,60 +165,16 @@ class JobProcessor:
         }
 
     async def _upload_to_storage(self, local_path: str) -> str:
-        """Upload generated image to R2 storage and return public URL."""
+        """Upload generated image via StorageProtocol and return the download URL."""
         with tracer.start_as_current_span("upload_to_storage") as span:
-            filename = f"generations/{uuid.uuid4()}.png"
-            span.set_attribute("filename", filename)
-
+            storage_key = f"generations/{uuid.uuid4()}.png"
+            span.set_attribute("storage_key", storage_key)
             try:
-                # Robust endpoint handling
-                endpoint_url = self.config.r2_endpoint
-                if not endpoint_url:
-                    if not self.config.r2_account_id:
-                        raise ValueError("Neither R2_ENDPOINT nor R2_ACCOUNT_ID is configured")
-                    endpoint_url = f"https://{self.config.r2_account_id}.r2.cloudflarestorage.com"
-
-                client = boto3.client(
-                    "s3",
-                    endpoint_url=endpoint_url,
-                    aws_access_key_id=self.config.r2_access_key_id,
-                    aws_secret_access_key=self.config.r2_secret_access_key,
-                    config=BotoConfig(signature_version="s3v4"),
-                    region_name="auto",
-                )
-
-                with open(local_path, "rb") as f:
-                    await asyncio.to_thread(
-                        client.upload_fileobj,
-                        f,
-                        self.config.r2_bucket,
-                        filename,
-                        ExtraArgs={"ContentType": "image/png"},
-                    )
-
-                if self.config.r2_public_url:
-                    # Use configured public URL (custom CDN domain preferred)
-                    public_url = f"{self.config.r2_public_url.rstrip('/')}/{filename}"
-                elif self.config.r2_account_id:
-                    # Use the public r2.dev bucket URL — r2_endpoint is the S3 API endpoint,
-                    # not the public-facing URL.
-                    public_url = (
-                        f"https://{self.config.r2_bucket}.{self.config.r2_account_id}.r2.dev/{filename}"
-                    )
-                    logger.warning(
-                        "R2_PUBLIC_URL not configured; using r2.dev fallback URL. "
-                        "Set R2_PUBLIC_URL (custom CDN domain) for production use."
-                    )
-                else:
-                    raise ValueError(
-                        "Cannot construct public R2 URL: neither R2_PUBLIC_URL nor "
-                        "R2_ACCOUNT_ID is set"
-                    )
-
-                logger.info("Uploaded to R2", extra={"url": public_url})
-                span.set_attribute("public_url", public_url)
-
-                return public_url
+                await self._storage.upload_file(local_path, storage_key)
+                url = await self._storage.get_download_url(storage_key)
+                span.set_attribute("output_url", url)
+                logger.info("Uploaded to storage", extra={"storage_key": storage_key})
+                return url
             finally:
                 try:
                     os.unlink(local_path)

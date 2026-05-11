@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
 
-import anyio
 import boto3
 from botocore.config import Config
 
@@ -103,7 +103,7 @@ class R2Storage(StorageProtocol):
 
         logger.info("Deleting object from R2", extra={"storage_key": storage_key})
         try:
-            await anyio.to_thread.run_sync(
+            await asyncio.to_thread(
                 self._client.delete_object,
                 Bucket=self._bucket,
                 Key=storage_key,
@@ -115,3 +115,16 @@ class R2Storage(StorageProtocol):
                 extra={"storage_key": storage_key, "error": str(e)},
             )
             return False
+
+    async def upload_file(self, local_path: str, storage_key: str) -> None:
+        """Upload a local file directly to R2 at the given storage key."""
+        self._ensure_client()
+        with open(local_path, "rb") as f:
+            await asyncio.to_thread(
+                self._client.upload_fileobj,
+                f,
+                self._bucket,
+                storage_key,
+                ExtraArgs={"ContentType": "image/png"},
+            )
+        logger.info("Uploaded file to R2", extra={"storage_key": storage_key})

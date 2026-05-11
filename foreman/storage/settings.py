@@ -62,4 +62,6 @@ class S3Settings(StorageSettings):
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.access_key_id and self.secret_access_key)
+        both_empty = not self.access_key_id and not self.secret_access_key
+        both_present = bool(self.access_key_id and self.secret_access_key)
+        return both_present or both_empty
