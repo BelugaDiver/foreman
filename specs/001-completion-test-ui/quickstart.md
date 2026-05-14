@@ -10,6 +10,7 @@
 - Foreman service running on `http://localhost:8000` (or Docker Compose setup)
 - Python 3.7+ (for serving static files)
 - Modern web browser (Chrome, Firefox, Safari, Edge)
+- **Storage bucket CORS configured**: The S3/R2 bucket must allow PUT from `http://localhost:3000`. Without this, image uploads will be blocked by the browser. See your bucket's CORS settings.
 
 ### Steps
 
@@ -50,14 +51,21 @@
    - Enter project name (e.g., "My Test Project")
    - Click "Create"
 
-7. **Submit a generation job**:
+7. **Upload a test image** *(required before first generation)*:
+   - With the project selected, click "Upload Image"
+   - Pick a local image file (JPEG, PNG, WebP, or GIF)
+   - UI requests a presigned URL from foreman, then uploads directly to storage
+   - On success, the project's input image is set automatically
+   - You should see the image thumbnail in the project view
+
+8. **Submit a generation job**:
    - Click "New Generation" button
    - Enter prompt (e.g., "Modern minimalist interior design")
    - Optionally select a style from dropdown
    - Click "Submit"
    - UI shows job details with status "pending"
 
-8. **Monitor completion**:
+9. **Monitor completion**:
    - Watch as job status transitions from "pending" → "processing" → "completed"
    - When completed, output image URL is displayed and image is rendered
    - Processing time is shown
@@ -151,9 +159,18 @@ The UI attempts to find foreman in this order:
 
 ### Testing Job Creation
 1. Create project
-2. Fill form: prompt="test prompt", style=any
-3. Submit
-4. Verify job appears with status="pending"
+2. Upload a test image (required — sets `original_image_url` on the project)
+3. Fill form: prompt="test prompt", style=any
+4. Submit
+5. Verify job appears with status="pending"
+
+### Testing Image Upload
+1. Create a project
+2. Click "Upload Image" → pick a .jpg or .png file
+3. Verify progress bar reaches 100%
+4. Verify project now shows uploaded image thumbnail
+5. Verify `original_image_url` is set on the project (visible in project detail)
+6. Now submit a generation — it should use the uploaded image as input
 
 ### Testing Job Completion
 1. Submit generation job (ensure worker is running)
@@ -204,6 +221,12 @@ The UI attempts to find foreman in this order:
 
 | Issue | Cause | Fix |
 |-------|-------|-----|
+| Image upload fails with CORS error | S3/R2 bucket missing CORS config | Add PUT CORS rule for `http://localhost:3000` on the bucket |
+| Image upload fails with 403 from storage | Presigned URL expired | Click upload again; UI auto-requests fresh presigned URL |
+| "Project has no input image" warning on generation form | `original_image_url` not set | Upload an image first; project is updated automatically |
+| Upload progress stalls at 0% | Network blocked or storage unreachable | Check browser console for CORS/network errors |
+| Image thumbnail doesn't render after upload | Signed URL expired | Re-fetch image list; URLs are short-lived |
+| Image upload fails with 422 | Invalid content_type or size_bytes=0 | Use JPEG/PNG/WebP/GIF; ensure file size > 0 bytes |
 | "Failed to connect to API" on startup | Foreman not running | Start foreman; verify `http://localhost:8000/health` responds |
 | Settings don't persist after page refresh | localStorage disabled | Enable cookies/storage in browser settings |
 | Job status doesn't update | Polling stopped | Check if tab is backgrounded; click refresh manually |
@@ -222,12 +245,19 @@ See [contracts/api-endpoints.md](../contracts/api-endpoints.md) for full API doc
 - `GET /health` — Discovery
 - `POST /v1/users/` — User creation
 - `GET /v1/users/me` — Get current user
-- `GET/POST /v1/projects/` — Project management
+- `GET/POST /v1/projects/` — Project list + create
+- `PATCH /v1/projects/{id}` — Set original_image_url after upload
+- `POST /v1/projects/{id}/images` — Upload intent (get presigned URL)
+- `GET /v1/projects/{id}/images` — List uploaded images
+- `GET /v1/images/{id}` — Get signed download URL post-upload
+- `PUT {presigned_url}` — Direct upload to S3/R2 (not a foreman endpoint)
 - `GET /v1/styles/` — Style options
 - `POST /v1/projects/{id}/generations` — Create job
 - `GET /v1/generations/{id}` — Get job status
 - `GET /v1/projects/{id}/generations` — List jobs
-- `POST /v1/generations/{id}/cancel|retry|fork` — Job actions
+- `POST /v1/generations/{id}/cancel` — Cancel job
+- `POST /v1/generations/{id}/retry` — Retry failed job
+- `POST /v1/generations/{id}/fork` — Fork completed job
 
 ---
 
@@ -235,4 +265,3 @@ See [contracts/api-endpoints.md](../contracts/api-endpoints.md) for full API doc
 
 - **Contribute**: Add features or fixes; see CONTRIBUTING.md
 - **Report Issues**: File bugs in GitHub Issues
-- **Extend**: Add support for image upload or custom model selection

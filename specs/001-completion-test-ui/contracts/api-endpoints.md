@@ -6,7 +6,9 @@
 
 ## Overview
 
-The UI is a thin client for the foreman API. It calls exactly 13 endpoints, documented below. All requests include the `x-user-id` header. All responses are JSON; errors use standard HTTP status codes (4xx client, 5xx server).
+The UI is a thin client for the foreman API. It calls **16 endpoints** documented below, including a two-step image upload flow (presigned intent + direct-to-storage PUT). All foreman requests include the `x-user-id` header. All responses are JSON; errors use standard HTTP status codes (4xx client, 5xx server).
+
+> **Important — Upload ordering**: A project MUST have `original_image_url` set before the first generation can be submitted. The upload flow is: `POST /v1/projects/{id}/images` → PUT file to presigned URL → `GET /v1/images/{image_id}` (to get signed download URL) → `PATCH /v1/projects/{id}` (to set `original_image_url`). Only then should generation be attempted.
 
 ## Authentication & Headers
 
@@ -190,7 +192,162 @@ Content-Type: application/json
 
 ---
 
-### 6. Get Styles
+### 6. Create Image Upload Intent
+
+**Purpose**: Request a presigned URL for uploading a test image directly to object storage
+
+**Request**:
+```
+POST /v1/projects/{project_id}/images HTTP/1.1
+Host: localhost:8000
+x-user-id: 550e8400-e29b-41d4-a716-446655440000
+Content-Type: application/json
+
+{
+  "filename": "room-photo.jpg",
+  "content_type": "image/jpeg",
+  "size_bytes": 2048000
+}
+```
+
+**Validation**: `content_type` must match `^image/(jpeg|png|gif|webp)$`; `size_bytes` must be > 0
+
+**Response (201 Created)**:
+```json
+{
+  "upload_url": "https://storage.example.com/presigned-upload-url?X-Amz-Signature=...",
+  "image_id": "550e8400-e29b-41d4-a716-446655440006",
+  "file_key": "uploads/proj-xxx/room-photo.jpg",
+  "expires_at": "2026-05-13T10:50:00Z"
+}
+```
+
+**UI Expectation**: The `upload_url` is used for a direct PUT (not via foreman); check `expires_at` before PUT — if expired, call this endpoint again to get a fresh URL
+
+**UI Usage**: Called from image upload component; stores `intent` in state; initiates browser PUT to `upload_url`
+
+---
+
+### 6b. Upload File to Storage (direct PUT — NOT a foreman endpoint)
+
+**Purpose**: Upload the actual file bytes directly to storage (S3/R2) using the presigned URL
+
+**Request** (to `upload_url` from above — NOT `localhost:8000`):
+```
+PUT {upload_url} HTTP/1.1
+Content-Type: image/jpeg
+Content-Length: 2048000
+
+[binary file data]
+```
+
+**Response (200 OK or 204 No Content)**:
+Empty body on success
+
+**Response (403 Forbidden)**:
+Presigned URL has expired; request a new upload intent
+
+**CORS requirement**: The storage bucket (S3/R2) MUST have CORS configured to allow PUT from the UI origin (`http://localhost:3000`). Without this, the browser will block the upload. Add to bucket CORS policy:
+```json
+{
+  "AllowedOrigins": ["http://localhost:3000"],
+  "AllowedMethods": ["PUT"],
+  "AllowedHeaders": ["Content-Type", "Content-Length"]
+}
+```
+
+**UI Usage**: Called by `image-upload.js` via `fetch(uploadUrl, { method: 'PUT', body: file })`; track progress via `XMLHttpRequest.upload.onprogress`
+
+---
+
+### 6c. Get Image (post-upload signed URL retrieval)
+
+**Purpose**: Retrieve the signed download URL for an uploaded image; use this URL to PATCH the project's `original_image_url`
+
+**Request**:
+```
+GET /v1/images/{image_id} HTTP/1.1
+Host: localhost:8000
+x-user-id: 550e8400-e29b-41d4-a716-446655440000
+```
+
+**Response (200 OK)**:
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440006",
+  "project_id": "550e8400-e29b-41d4-a716-446655440001",
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "filename": "room-photo.jpg",
+  "content_type": "image/jpeg",
+  "size_bytes": 2048000,
+  "storage_key": "uploads/proj-xxx/room-photo.jpg",
+  "url": "https://storage.example.com/uploads/room-photo.jpg?X-Amz-Signature=...",
+  "created_at": "2026-05-13T10:30:00Z",
+  "updated_at": "2026-05-13T10:30:00Z"
+}
+```
+
+**UI Usage**: Called immediately after successful PUT; `url` field is passed to `PATCH /v1/projects/{id}` to set `original_image_url`
+
+---
+
+### 6d. List Project Images
+
+**Purpose**: List all uploaded images for a project; used to populate image picker in generation form
+
+**Request**:
+```
+GET /v1/projects/{project_id}/images?limit=20&offset=0 HTTP/1.1
+Host: localhost:8000
+x-user-id: 550e8400-e29b-41d4-a716-446655440000
+```
+
+**Response (200 OK)**:
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440006",
+    "project_id": "550e8400-e29b-41d4-a716-446655440001",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "filename": "room-photo.jpg",
+    "content_type": "image/jpeg",
+    "size_bytes": 2048000,
+    "storage_key": "uploads/proj-xxx/room-photo.jpg",
+    "url": "https://storage.example.com/uploads/room-photo.jpg?token=...",
+    "created_at": "2026-05-13T10:30:00Z",
+    "updated_at": "2026-05-13T10:30:00Z"
+  }
+]
+```
+
+**UI Usage**: Called when opening image-upload view or generation form; populates image gallery/picker; allows reusing previously uploaded images
+
+---
+
+### 6e. Update Project (PATCH — set original_image_url after upload)
+
+**Purpose**: Link an uploaded image to a project as its `original_image_url`; required before first generation
+
+**Request**:
+```
+PATCH /v1/projects/{project_id} HTTP/1.1
+Host: localhost:8000
+x-user-id: 550e8400-e29b-41d4-a716-446655440000
+Content-Type: application/json
+
+{
+  "original_image_url": "https://storage.example.com/uploads/room-photo.jpg?token=..."
+}
+```
+
+**Response (200 OK)**:
+Returns updated `ProjectRead` with `original_image_url` set
+
+**UI Usage**: Called automatically after successful upload + image URL retrieval; updates project in state; enables generation form submit button
+
+---
+
+### 7. Get Styles
 
 **Purpose**: Fetch available design styles for generation form dropdown
 
@@ -502,4 +659,8 @@ All API calls catch errors and surface user-friendly messages in the notificatio
 | Get completed generation | 200 | status="completed", output_image_url set |
 | Fork failed generation | 422 or error | Should not allow forking failed jobs |
 | Cancel already-completed job | 422 or error | Should not allow cancelling completed jobs |
-| API unreachable | Connection error | Timeout; UI suggests checking foreman running |
+| Upload intent with unsupported content_type | 422 | Validation error returned |
+| Upload intent with expired URL then PUT | 403 from storage | UI must request fresh intent |
+| GET project images when none uploaded | 200 | Empty array returned |
+| Create generation without project original_image_url | Error | Worker will fail; UI should warn before submit |
+| Storage bucket missing CORS | Browser CORS error | Upload blocked; inform user to configure CORS |

@@ -88,8 +88,12 @@ A developer wants to test advanced workflows where one generation's output feeds
 - **FR-002**: UI MUST provide a settings panel where developers can manually enter and save their test x-user-id; this value MUST persist in localStorage for the session
 - **FR-003**: UI MUST auto-discover the foreman API endpoint by first attempting to connect to `http://localhost:8000`; if that fails, MUST attempt dynamic discovery via `/.well-known/` or service registry
 - **FR-004**: UI MUST allow developers to manually override the foreman API base URL in settings and persist it in localStorage
-- **FR-005**: UI MUST display a project creation form allowing users to enter a project name and optional original image URL
-- **FR-006**: UI MUST display a generation creation form with fields for prompt (required), style (optional dropdown), and parent_id (optional)
+- **FR-005**: UI MUST display a project creation form allowing users to enter a project name; `original_image_url` is optional at creation and can be set after upload
+- **FR-005a**: UI MUST provide an image upload control within the project context that calls `POST /v1/projects/{id}/images` to obtain a presigned upload URL, then uploads the file directly to that URL via HTTP PUT
+- **FR-005b**: UI MUST display upload progress and confirm successful upload; after upload the UI MUST call `GET /v1/images/{image_id}` to retrieve the signed download URL, then PATCH the project's `original_image_url` to that URL so subsequent generations have a valid input
+- **FR-005c**: UI MUST validate that presigned upload URL has not expired (check `expires_at`) before attempting PUT; if expired, UI MUST request a fresh upload intent
+- **FR-005d**: UI MUST list uploaded images for a project (via `GET /v1/projects/{id}/images`) and allow the developer to select or re-use them in the generation form
+- **FR-006**: UI MUST display a generation creation form with fields for prompt (required), style (optional dropdown), and parent_id (optional); the form MUST warn if the project has no `original_image_url` set, as this will cause the generation to fail
 - **FR-007**: UI MUST submit generation requests to the foreman API and display the returned generation object with its ID
 - **FR-008**: UI MUST support fetching and displaying the current status of a specific generation (pending, processing, completed, failed, cancelled)
 - **FR-009**: UI MUST display generated output images when a generation reaches "completed" status with a valid output_image_url
@@ -110,7 +114,9 @@ A developer wants to test advanced workflows where one generation's output feeds
 - **Project**: Container for generations, has name, original_image_url, and owns multiple generations.
 - **Generation**: Represents a single image generation job with status, prompt, inputs, outputs, and processing metadata.
 - **Style**: Represents available design styles that can be applied to generations (fetched from API).
-- **Image**: Represents stored images (inputs or outputs) with storage URLs.
+- **Image**: Represents stored images (inputs or outputs). Upload flow is three-step: (1) `POST /v1/projects/{id}/images` to get presigned URL + image_id, (2) PUT file bytes directly to the presigned URL, (3) `GET /v1/images/{image_id}` to retrieve the signed download URL. The download URL is then used to PATCH the project's `original_image_url` — this is what foreman uses as the `input_image_url` for the first generation in a project.
+- **ImageUploadIntent**: Transient object returned by foreman containing the presigned upload URL, image_id, storage key, and expiry timestamp. Must be used before `expires_at`.
+- **input_image_url sourcing** (critical for generation workflow): Foreman derives `input_image_url` for a new generation from: (a) the parent generation's `output_image_url` if `parent_id` is provided, or (b) the project's `original_image_url` for the first generation. The project MUST have `original_image_url` set before the first generation can be created.
 
 ## Success Criteria *(mandatory)*
 
@@ -118,7 +124,7 @@ A developer wants to test advanced workflows where one generation's output feeds
 
 - **SC-001**: Developers can create a generation job and see it appear in the system within under 2 seconds
 - **SC-002**: Developers can monitor job status changes with latency under 1 second (from job completion to UI reflecting completion)
-- **SC-003**: The UI supports testing all 5 primary generation endpoints (create, list, get, update status, cancel/retry/fork) without requiring API call construction
+- **SC-003**: The UI supports testing all primary generation and image endpoints (create, list, get, update status, cancel/retry/fork, and image upload) without requiring API call construction
 - **SC-004**: 95% of user interactions (form submissions, job creation, status polling) complete without JavaScript errors
 - **SC-005**: New developers can create their first test generation job and see it progress through the pipeline within 5 minutes of opening the UI
 - **SC-006**: The UI displays all critical generation metadata (status, prompt, output image, error message, processing time) correctly for any generated job state
@@ -137,7 +143,9 @@ A developer wants to test advanced workflows where one generation's output feeds
 - **Authentication**: Developers can create a test user through the UI (via the foreman user creation API) which returns a user ID; this ID is automatically set as the x-user-id header for all subsequent API requests. Alternatively, developers can manually enter an existing x-user-id in the settings panel; this value persists in localStorage and is used as the x-user-id header.
 - **API Discovery**: The UI attempts to connect to `http://localhost:8000` as the default foreman API base URL. If this connection fails, the UI attempts dynamic discovery (e.g., via `/.well-known/` endpoint or service registry). Developers can manually override the API URL in settings if needed.
 - **Project Initial State**: Developers can create at least one project before submitting generations; projects are not pre-seeded
-- **Image Display**: Output images are accessible via public/signed URLs provided by the API; the UI doesn't need to handle image download/processing
+- **Image Display**: Output images are accessible via signed URLs provided by the API; signed URLs may expire — the UI should link to them but not attempt to cache
+- **CORS on Storage Bucket**: Direct browser-to-storage PUT (presigned upload) requires the storage bucket (S3/R2) to have CORS configured to allow PUT from the UI origin. This is a deployment prerequisite; developers must ensure CORS is configured on the bucket before image upload will work in the browser
+- **Upload → Generate ordering**: A project must have `original_image_url` set before the first generation can be created. The recommended workflow is: create project → upload image → (auto-PATCH project) → create generation
 - **Polling vs WebSocket**: Real-time status updates will use polling rather than WebSockets to keep the UI simple; polling interval can be configurable (default 2-5 seconds)
 - **Scope**: The UI is a developer testing tool, not a production UI; visual design can be minimal/utilitarian. Deployed as static files (HTML/CSS/JavaScript) in `foreman/ui/` directory; developers serve locally with `python -m http.server 3000` or similar.
 - **Data Retention**: Test data does not need to persist across server restarts; in-memory storage or session storage is acceptable

@@ -51,6 +51,21 @@ state = {
     currentGenerationId: string | null  // selected job detail view
   },
 
+  // Images (uploaded images per project — keyed by projectId)
+  images: {
+    byProject: Record<string, Image[]>,  // projectId → Image[]
+    isLoading: boolean,
+    error: string | null,
+    // Active upload state
+    upload: {
+      inProgress: boolean,
+      fileName: string | null,
+      progressPercent: number,  // 0-100
+      intent: ImageUploadIntent | null,  // presigned URL + image_id from foreman
+      error: string | null
+    }
+  },
+
   // Styles (cached list)
   styles: {
     items: Style[],
@@ -60,7 +75,7 @@ state = {
 
   // UI Navigation
   ui: {
-    currentView: 'settings' | 'auth' | 'projects' | 'job-form' | 'job-list' | 'job-detail',
+    currentView: 'settings' | 'auth' | 'projects' | 'image-upload' | 'job-form' | 'job-list' | 'job-detail',
     navHistory: string[],        // breadcrumb trail
     notificationQueue: Notification[]  // toast messages
   },
@@ -133,6 +148,32 @@ state = {
 }
 ```
 
+#### Image
+```javascript
+{
+  id: "550e8400-e29b-41d4-a716-446655440006",
+  projectId: "550e8400-e29b-41d4-a716-446655440001",
+  userId: "550e8400-e29b-41d4-a716-446655440000",
+  filename: "room-photo.jpg",
+  contentType: "image/jpeg",
+  sizeBytes: 2048000,
+  storageKey: "uploads/proj-xxx/room-photo.jpg",
+  url: "https://storage.example.com/uploads/room-photo.jpg?token=..." | null,  // signed download URL
+  createdAt: "2026-05-13T10:30:00Z",
+  updatedAt: "2026-05-13T10:30:00Z"
+}
+```
+
+#### ImageUploadIntent (transient — from foreman upload intent API)
+```javascript
+{
+  uploadUrl: "https://storage.example.com/presigned-upload-url?...",  // PUT target
+  imageId: "550e8400-e29b-41d4-a716-446655440006",
+  fileKey: "uploads/proj-xxx/room-photo.jpg",
+  expiresAt: "2026-05-13T10:45:00Z"  // presigned URL expiry (~15 min)
+}
+```
+
 #### Notification (UI-only)
 ```javascript
 {
@@ -156,6 +197,8 @@ getGenerationsForProject(id)    // filters state.generations.items by projectId
 getProjectById(id)              // finds project in state
 getGenerationById(id)           // finds generation in state
 getStyles()                     // returns state.styles.items
+getImagesForProject(id)         // returns state.images.byProject[id] or []
+getUploadState()                // returns state.images.upload
 isPollingActive()               // returns state.polling.isPolling
 ```
 
@@ -168,6 +211,11 @@ setCurrentProject(projectId)    // updates state.projects.currentProjectId
 setCurrentGeneration(genId)     // updates state.generations.currentGenerationId; starts polling if detail view
 setProjects(projects)           // replaces state.projects.items
 setGenerations(generations)     // replaces state.generations.items for current project
+setImagesForProject(projectId, images) // replaces image cache for a project
+setUploadProgress(percent)      // updates state.images.upload.progressPercent
+setUploadIntent(intent)         // stores ImageUploadIntent; checks expiresAt before PUT
+setUploadError(message)         // sets upload error; clears intent
+clearUpload()                   // resets entire upload sub-state after completion
 setStyles(styles)               // replaces state.styles.items
 addNotification(type, message)  // adds to notification queue
 startPolling(generationId)      // sets up interval to fetch generation status
@@ -198,6 +246,8 @@ onViewChange(callback)
 ### Data Refresh Triggers
 - **Projects list**: Fetch on project view entry; refresh button available
 - **Generations list**: Fetch when project selected; auto-refresh every 10 seconds in list view
+- **Images list**: Fetch when entering image-upload view or generation form for a project; refresh after successful upload
+- **Signed image URL**: Fetch via `GET /v1/images/{id}` immediately after upload completes to retrieve the signed `url`; this URL is then used to PATCH the project's `original_image_url`
 - **Current generation**: Fetch every N seconds (pollingInterval) while viewing detail
 - **Styles list**: Fetch once on app load; cache in state
 - **User**: Fetch after user creation; verify x-user-id valid on app init

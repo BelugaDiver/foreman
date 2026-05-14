@@ -5,7 +5,7 @@
 
 ## Summary
 
-Build a standalone web-based testing UI for validating end-to-end image generation workflows in foreman. Developers access the UI at `http://localhost:3000`, discover the foreman API at `http://localhost:8000` (with fallback to dynamic discovery), create test users, submit generation jobs, and monitor completion in real-time via polling. The UI is delivered as static HTML/CSS/JavaScript in `foreman/ui/`, requires no backend beyond the existing foreman API, and supports all generation lifecycle operations (create, list, get, cancel, retry, fork).
+Build a standalone web-based testing UI for validating end-to-end image generation workflows in foreman. Developers access the UI at `http://localhost:3000`, discover the foreman API at `http://localhost:8000` (with fallback to dynamic discovery), create test users, upload test images via the two-step presigned-URL flow, submit generation jobs, and monitor completion in real-time via polling. The UI is delivered as static HTML/CSS/JavaScript in `foreman/ui/`, requires no backend beyond the existing foreman API, and supports the full lifecycle: image upload, generation create/cancel/retry/fork, and status polling.
 
 ## Technical Context
 
@@ -58,7 +58,8 @@ foreman/ui/
 │   ├── settings.js         # Settings panel (user ID, API URL, polling interval)
 │   ├── auth.js             # User creation form + login screen
 │   ├── projects.js         # Project list and creation form
-│   ├── generation-form.js  # Generation job creation form
+│   ├── image-upload.js     # File picker + presigned-URL upload flow; progress display
+│   ├── generation-form.js  # Generation job creation form; includes image selector from uploads
 │   ├── job-list.js         # List of generations with filtering
 │   ├── job-detail.js       # Single generation detail view with polling
 │   └── utils.js            # Helper functions (DOM, formatting, validation)
