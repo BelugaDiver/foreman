@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Foreman Test UI</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- Top navigation -->
+  <nav id="main-nav">
+    <span class="nav-brand">Foreman</span>
+    <a href="#" data-view="auth"         title="Auth">Auth</a>
+    <a href="#" data-view="projects"     title="Projects">Projects</a>
+    <a href="#" data-view="image-upload" title="Upload Image">Upload</a>
+    <a href="#" data-view="job-form"     title="New Generation">Generate</a>
+    <a href="#" data-view="job-list"     title="Job List">Jobs</a>
+    <a href="#" data-view="job-detail"   title="Job Detail">Detail</a>
+    <a href="#" data-view="settings"     title="Settings" class="nav-settings">⚙</a>
+  </nav>
+
+  <!-- Toast notifications -->
+  <div id="notifications" role="status" aria-live="polite"></div>
+
+  <!-- Main content — one <section> per view -->
+  <main>
+
+    <section id="view-auth">
+      <!-- Rendered by components/auth.js -->
+    </section>
+
+    <section id="view-settings">
+      <!-- Rendered by components/settings.js -->
+    </section>
+
+    <section id="view-projects">
+      <!-- Rendered by components/projects.js -->
+    </section>
+
+    <section id="view-image-upload">
+      <!-- Rendered by components/image-upload.js -->
+    </section>
+
+    <section id="view-job-form">
+      <!-- Rendered by components/generation-form.js -->
+    </section>
+
+    <section id="view-job-list">
+      <!-- Rendered by components/job-list.js -->
+    </section>
+
+    <section id="view-job-detail">
+      <!-- Rendered by components/job-detail.js -->
+    </section>
+
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
