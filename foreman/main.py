@@ -75,9 +75,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add CORS middleware
-# WARNING: allow_origins=["*"] is not secure for production
-# Configure CORS_ORIGINS environment variable with specific domains in production
+instrument_app(app)
+app.add_middleware(RequestLoggingMiddleware)
+
+# CORS must be added last so it is the outermost middleware layer.
+# In Starlette the last add_middleware call wraps everything else,
+# ensuring Access-Control-* headers are present on ALL responses
+# (including error responses and OPTIONS preflights).
+# WARNING: allow_origins=["*"] is not secure for production.
+# Configure CORS_ORIGINS environment variable with specific origins in production.
 allowed_origins = os.getenv("CORS_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
@@ -86,8 +92,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-instrument_app(app)
-app.add_middleware(RequestLoggingMiddleware)
 
 
 async def connection_failure_handler(request: Request, exc: Exception):

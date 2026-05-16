@@ -13,7 +13,6 @@ from foreman.models.user import User
 from foreman.repositories import postgres_images_repository as crud
 from foreman.repositories import postgres_projects_repository as project_crud
 from foreman.schemas.image import ImageCreate, ImageRead, ImageUploadIntent, ImageUploadRequest
-from foreman.schemas.project import ProjectUpdate
 from foreman.storage import StorageProtocol, get_storage_sync
 
 router = APIRouter()
@@ -71,30 +70,10 @@ async def create_upload_intent(
             extra={
                 "project_id": str(project_id),
                 "user_id": str(current_user.id),
-                "filename": request.filename,
+                "image_filename": request.filename,
             },
         )
         raise HTTPException(status_code=500, detail="Internal server error") from exc
-
-    # If this is the only image for the project, set it as the project's original_image_url
-    image_count = await crud.count_images(db, project_id, current_user.id)
-    if image_count == 1 and image.url:
-        try:
-            await project_crud.update_project(
-                db,
-                project_id=project_id,
-                user_id=current_user.id,
-                project_in=ProjectUpdate(original_image_url=image.url),
-            )
-            logger.info(
-                "Set project original_image_url from first upload",
-                extra={"project_id": str(project_id), "image_id": str(image.id)},
-            )
-        except Exception:
-            logger.warning(
-                "Failed to update project original_image_url",
-                extra={"project_id": str(project_id), "image_id": str(image.id)},
-            )
 
     logger.info(
         "Upload intent created",
@@ -122,8 +101,9 @@ async def list_images(
     offset: int = Query(0, ge=0),
     db: Database = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    storage: StorageProtocol = Depends(get_storage),
 ):
-    """List all images for a project."""
+    """List all images for a project, with fresh signed download URLs."""
     try:
         await project_crud.get_project_by_id(db, project_id, current_user.id)
     except ResourceNotFoundError:
@@ -140,6 +120,8 @@ async def list_images(
     )
 
     images = await crud.list_images(db, project_id, current_user.id, limit, offset)
+    for image in images:
+        image.url = await storage.get_download_url(image.storage_key)
     return images
 
 
