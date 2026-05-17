@@ -17,6 +17,24 @@ class CorrelationIdFilter(logging.Filter):
         return True
 
 
+class _TextFormatter(logging.Formatter):
+    """Text formatter that guarantees correlation_id is present."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        if not hasattr(record, "correlation_id"):
+            record.correlation_id = "-"
+        return super().format(record)
+
+
+class _JsonFormatter(JsonFormatter):
+    """JSON formatter that guarantees correlation_id is present."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        if not hasattr(record, "correlation_id"):
+            record.correlation_id = "-"
+        return super().format(record)
+
+
 def configure_logging() -> None:
     """Configure logging based on LOG_FORMAT environment variable."""
     use_json = os.getenv("LOG_FORMAT", "text").lower() == "json"
@@ -25,15 +43,18 @@ def configure_logging() -> None:
     root_logger.setLevel(logging.INFO)
 
     if use_json:
-        formatter = JsonFormatter(
+        formatter: logging.Formatter = _JsonFormatter(
             "%(asctime)s %(name)s %(levelname)s %(message)s %(correlation_id)s",
             datefmt="%Y-%m-%dT%H:%M:%S",
         )
     else:
-        formatter = logging.Formatter(
+        formatter = _TextFormatter(
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s [cid:%(correlation_id)s]",
         )
 
+    # Add the filter to every root handler so correlation_id is stamped on
+    # records from any logger (including third-party loggers that use bare
+    # logging.getLogger() and propagate to root).
     if root_logger.handlers:
         for handler in root_logger.handlers:
             if not any(isinstance(f, CorrelationIdFilter) for f in handler.filters):
@@ -42,6 +63,7 @@ def configure_logging() -> None:
                 handler.setFormatter(formatter)
     else:
         handler = logging.StreamHandler(sys.stdout)
+        handler.addFilter(CorrelationIdFilter())
         handler.setFormatter(formatter)
         root_logger.addHandler(handler)
 

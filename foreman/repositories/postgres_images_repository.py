@@ -102,7 +102,7 @@ async def create_image(
     """Insert a new image row and return it."""
     logger.info(
         "Creating image record",
-        extra={"project_id": str(image_in.project_id), "filename": image_in.filename},
+        extra={"project_id": str(image_in.project_id), "image_filename": image_in.filename},
     )
     stmt = sql(
         """

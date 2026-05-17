@@ -41,8 +41,20 @@ class S3Storage(StorageProtocol):
             logger.warning("S3 Storage not configured - operations will fail if attempted")
 
     def _create_client(self):
-        """Create a boto3 S3 client with the configured settings."""
-        client_kwargs = {"region_name": self._settings.region}
+        """Create a boto3 S3 client with the configured settings.
+
+        Uses the explicit regional endpoint to avoid 301 redirects for buckets
+        outside us-east-1. Without this, boto3 generates presigned URLs pointing
+        to the global s3.amazonaws.com endpoint, which redirects non-us-east-1
+        buckets. Browsers abort CORS preflights on redirects, causing upload failures.
+        """
+        from botocore.config import Config
+
+        client_kwargs = {
+            "region_name": self._settings.region,
+            "endpoint_url": f"https://s3.{self._settings.region}.amazonaws.com",
+            "config": Config(s3={"addressing_style": "virtual"}),
+        }
         if self._settings.access_key_id:
             client_kwargs["aws_access_key_id"] = self._settings.access_key_id
             client_kwargs["aws_secret_access_key"] = self._settings.secret_access_key
