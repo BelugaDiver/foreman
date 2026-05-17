@@ -58,7 +58,11 @@ export function switchView(viewName) {
 
   // Render component into view
   const renderer = VIEW_RENDERERS[viewName];
-  if (renderer) renderer(target);
+  if (renderer) {
+    Promise.resolve(renderer(target)).catch(error => {
+      console.error(`Failed to render view "${viewName}"`, error);
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
