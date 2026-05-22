@@ -74,7 +74,7 @@ class JobProcessor:
                     UUID(job.generation_id),
                     job_user_id,
                 )
-                user_id = gen.user_id
+                user_id = job_user_id
 
                 await self._update_status(job.generation_id, user_id, "processing")
                 span.add_event("status_updated_to_processing")
