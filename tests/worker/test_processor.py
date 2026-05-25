@@ -11,8 +11,7 @@ import pytest
 
 from worker.config import WorkerConfig
 from worker.consumer import GenerationJob, MalformedSQSMessageError
-from worker.processor import JobProcessor, ProcessingResult
-
+from worker.processor import JobProcessor
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
@@ -109,9 +108,10 @@ async def test_run_agent_returns_dict_with_path():
     processor = _make_processor(ai_provider=ai)
     job = _make_job()
 
-    result = await processor._run_agent(job)
+    result = await processor._run_agent(job, runtime_session_id="proj-123")
 
     ai.generate.assert_called_once()
+    assert ai.generate.call_args.kwargs["runtime_session_id"] == "proj-123"
     assert result["output_image_path"] == "/tmp/gen_abc.png"
     assert result["model_used"] == "gemini-3.1-flash-image-preview"
 
@@ -129,16 +129,16 @@ async def test_upload_to_storage_calls_upload_file_and_get_download_url():
     os.close(fd)
     try:
         url = await processor._upload_to_storage(path)
-        
+
         # Verify both storage methods were called
         storage.upload_file.assert_called_once()
         storage.get_download_url.assert_called_once()
-        
+
         # Verify arguments
         call_args = storage.upload_file.call_args
         assert call_args[0][0] == path
         assert call_args[0][1].startswith("generations/")
-        
+
         # Verify returned URL
         assert url == "https://cdn.example.com/generations/test.png"
     finally:
@@ -171,7 +171,7 @@ async def test_upload_to_storage_deletes_local_file_on_failure():
 
     with pytest.raises(RuntimeError, match="upload failed"):
         await processor._upload_to_storage(path)
-    
+
     # File should still be deleted
     assert not os.path.exists(path)
 
@@ -200,15 +200,25 @@ async def test_process_with_r2_storage_via_protocol():
 
     gen_record = _make_gen_record()
 
-    with patch("worker.processor.gen_repo.get_generation_by_id", new=AsyncMock(return_value=gen_record)):
+    with patch(
+        "worker.processor.gen_repo.get_generation_by_id",
+        new=AsyncMock(return_value=gen_record),
+    ):
         with patch("worker.processor.gen_repo.update_generation", new=AsyncMock()):
-            processor._run_agent = AsyncMock(return_value={"output_image_path": "/fake/path.png", "model_used": "m"})
+            processor._run_agent = AsyncMock(
+                return_value={
+                    "output_image_path": "/fake/path.png",
+                    "model_used": "m",
+                    "generated_image_description": "warm interior",
+                }
+            )
 
             result = await processor.process(job, retry_count=0)
 
     assert result.success is True
     assert result.output_image_url == "https://r2-cdn.example.com/gen/abc.png"
-    processor._run_agent.assert_called_once_with(job)
+    assert result.generated_image_description == "warm interior"
+    processor._run_agent.assert_called_once()
     storage.upload_file.assert_called_once()
     storage.get_download_url.assert_called_once()
 
@@ -226,17 +236,61 @@ async def test_process_success():
     gen_record = _make_gen_record()
     output_url = "https://cdn.example.com/generations/abc.png"
 
-    with patch("worker.processor.gen_repo.get_generation_by_id", new=AsyncMock(return_value=gen_record)):
+    with patch(
+        "worker.processor.gen_repo.get_generation_by_id",
+        new=AsyncMock(return_value=gen_record),
+    ):
         with patch("worker.processor.gen_repo.update_generation", new=AsyncMock()):
-            processor._run_agent = AsyncMock(return_value={"output_image_path": "/fake/path.png", "model_used": "m"})
+            processor._run_agent = AsyncMock(
+                return_value={
+                    "output_image_path": "/fake/path.png",
+                    "model_used": "m",
+                    "generated_image_description": "clean layout",
+                }
+            )
             processor._storage.get_download_url = AsyncMock(return_value=output_url)
 
             result = await processor.process(job, retry_count=0)
 
     assert result.success is True
     assert result.output_image_url == output_url
-    processor._run_agent.assert_called_once_with(job)
+    assert result.generated_image_description == "clean layout"
+    processor._run_agent.assert_called_once()
     processor._storage.upload_file.assert_called_once()
+
+
+async def test_runtime_session_id_is_deterministic_and_long_enough():
+    """Session ID derivation is deterministic and >=33 chars."""
+    processor = _make_processor(config=_make_config(runtime_session_prefix="proj"))
+    project_id = "00000000-0000-0000-0000-000000000003"
+    sid1 = processor._runtime_session_id_for_project(project_id)
+    sid2 = processor._runtime_session_id_for_project(project_id)
+    assert sid1 == sid2
+    assert sid1.startswith("proj-")
+    assert len(sid1) >= 33
+
+
+async def test_process_terminal_redelivery_returns_idempotent_noop():
+    """Terminal generation status should skip expensive processing and return no-op result."""
+    processor = _make_processor()
+    job = _make_job()
+
+    gen_record = _make_gen_record()
+    gen_record.status = "completed"
+    gen_record.output_image_url = "https://cdn.example.com/existing.png"
+
+    with patch(
+        "worker.processor.gen_repo.get_generation_by_id",
+        new=AsyncMock(return_value=gen_record),
+    ):
+        with patch("worker.processor.gen_repo.update_generation", new=AsyncMock()):
+            processor._run_agent = AsyncMock()
+            result = await processor.process(job, retry_count=1)
+
+    assert result.success is True
+    assert result.idempotent_noop is True
+    assert result.output_image_url == "https://cdn.example.com/existing.png"
+    processor._run_agent.assert_not_called()
 
 
 async def test_process_no_user_id_raises():
@@ -268,7 +322,10 @@ async def test_process_run_agent_exception_updates_failed_and_reraises():
 
     gen_record = _make_gen_record()
 
-    with patch("worker.processor.gen_repo.get_generation_by_id", new=AsyncMock(return_value=gen_record)):
+    with patch(
+        "worker.processor.gen_repo.get_generation_by_id",
+        new=AsyncMock(return_value=gen_record),
+    ):
         with patch("worker.processor.gen_repo.update_generation", new=AsyncMock()) as mock_update:
             processor._run_agent = AsyncMock(side_effect=RuntimeError("agent exploded"))
 
@@ -277,7 +334,11 @@ async def test_process_run_agent_exception_updates_failed_and_reraises():
 
     # update_generation should have been called at least once with status "failed"
     calls = mock_update.call_args_list
-    failed_calls = [c for c in calls if c.kwargs.get("generation_in") and c.kwargs["generation_in"].status == "failed"]
+    failed_calls = [
+        c
+        for c in calls
+        if c.kwargs.get("generation_in") and c.kwargs["generation_in"].status == "failed"
+    ]
     assert len(failed_calls) >= 1
 
 
@@ -311,7 +372,10 @@ async def test_process_update_status_raises_during_failed_update():
 
     gen_record = _make_gen_record()
 
-    with patch("worker.processor.gen_repo.get_generation_by_id", new=AsyncMock(return_value=gen_record)):
+    with patch(
+        "worker.processor.gen_repo.get_generation_by_id",
+        new=AsyncMock(return_value=gen_record),
+    ):
         # First call succeeds (status=processing), second raises (status=failed)
         call_count = 0
         async def fake_update(*args, **kwargs):

@@ -235,11 +235,11 @@ pip install -e ".[dev]"
 ```
 
 <!-- SPECKIT START -->
-**Current Feature**: Completion Test UI  
-**Plan**: [specs/001-completion-test-ui/plan.md](specs/001-completion-test-ui/plan.md)  
-**Spec**: [specs/001-completion-test-ui/spec.md](specs/001-completion-test-ui/spec.md)  
+**Current Feature**: SQS to AgentCore Translation  
+**Plan**: [specs/002-sqs-agentcore-translation/plan.md](specs/002-sqs-agentcore-translation/plan.md)  
+**Spec**: [specs/002-sqs-agentcore-translation/spec.md](specs/002-sqs-agentcore-translation/spec.md)  
 **Key Design Docs**:
-- [Data Model](specs/001-completion-test-ui/data-model.md) — Client-side state management
-- [API Contracts](specs/001-completion-test-ui/contracts/api-endpoints.md) — foreman endpoints used
-- [Quickstart](specs/001-completion-test-ui/quickstart.md) — Setup & common workflows
+- [Data Model](specs/002-sqs-agentcore-translation/data-model.md) — Queue job, runtime session, and generation persistence model
+- [API Contracts](specs/002-sqs-agentcore-translation/contracts/worker-agentcore-contract.md) — queue and AgentCore interface contracts
+- [Quickstart](specs/002-sqs-agentcore-translation/quickstart.md) — Implementation and verification flow
 <!-- SPECKIT END -->

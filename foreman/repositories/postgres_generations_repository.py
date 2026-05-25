@@ -14,7 +14,14 @@ logger = get_logger("foreman.repositories.generations")
 # Fields callers are permitted to update. Guards against column-name injection
 # in the dynamically built UPDATE query.
 ALLOWED_UPDATE_FIELDS: frozenset[str] = frozenset(
-    {"status", "output_image_url", "error_message", "processing_time_ms", "metadata"}
+    {
+        "status",
+        "output_image_url",
+        "generated_image_description",
+        "error_message",
+        "processing_time_ms",
+        "metadata",
+    }
 )
 
 

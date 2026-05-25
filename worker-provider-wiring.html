@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Foreman Worker Provider Wiring</title>
+  <style>
+    :root {
+      --bg: #f5f6ef;
+      --ink: #1d2a1f;
+      --muted: #49604d;
+      --card: #fffef8;
+      --line: #bec6b7;
+      --accent: #174f3c;
+      --accent-soft: #dcebe4;
+      --warn: #8b5e00;
+      --warn-soft: #fff4d4;
+      --danger: #8c2d23;
+      --danger-soft: #fde4df;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 18% 8%, #ffffff 0%, #f5f6ef 45%),
+        radial-gradient(circle at 90% 24%, #ebefe2 0%, #f5f6ef 50%);
+      line-height: 1.5;
+    }
+
+    .wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 32px 20px 52px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 32px;
+      letter-spacing: 0.3px;
+    }
+
+    .subtitle {
+      margin-top: 8px;
+      color: var(--muted);
+      max-width: 920px;
+      font-size: 15px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 16px;
+      margin-top: 22px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 4px 22px rgba(13, 28, 15, 0.05);
+    }
+
+    .card h2 {
+      margin: 0 0 8px;
+      font-size: 17px;
+      letter-spacing: 0.2px;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 14px;
+      margin: 0;
+    }
+
+    .diagram {
+      margin-top: 22px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .lane {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 4px 22px rgba(13, 28, 15, 0.05);
+    }
+
+    .lane h3 {
+      margin: 0 0 14px;
+      font-size: 18px;
+    }
+
+    .nodes {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      align-items: start;
+    }
+
+    .node {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      background: #fff;
+      min-height: 124px;
+      position: relative;
+    }
+
+    .node strong {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 5px;
+    }
+
+    .node p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .tag {
+      position: absolute;
+      right: 10px;
+      top: 10px;
+      font-size: 11px;
+      border-radius: 999px;
+      padding: 2px 8px;
+      border: 1px solid transparent;
+      letter-spacing: 0.2px;
+    }
+
+    .tag.current {
+      color: var(--accent);
+      background: var(--accent-soft);
+      border-color: #b5d4c7;
+    }
+
+    .tag.risk {
+      color: var(--danger);
+      background: var(--danger-soft);
+      border-color: #efc2bc;
+    }
+
+    .tag.target {
+      color: #165385;
+      background: #e6f3ff;
+      border-color: #bfddf5;
+    }
+
+    .arrow {
+      margin: 6px 0;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+      letter-spacing: 0.4px;
+    }
+
+    .code {
+      margin-top: 3px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: #203b2c;
+      background: #f1f4ea;
+      border: 1px solid #d7dfce;
+      border-radius: 8px;
+      padding: 6px 8px;
+      display: inline-block;
+    }
+
+    .seam-list {
+      margin: 10px 0 0;
+      padding-left: 18px;
+      font-size: 14px;
+    }
+
+    .seam-list li {
+      margin: 5px 0;
+    }
+
+    .table-wrap {
+      margin-top: 18px;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--card);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 720px;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      vertical-align: top;
+      text-align: left;
+      font-size: 13px;
+    }
+
+    th {
+      background: #eef2e6;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .legend {
+      margin-top: 18px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .pill {
+      font-size: 12px;
+      border-radius: 999px;
+      padding: 4px 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--muted);
+    }
+
+    .pill.current {
+      background: var(--accent-soft);
+      border-color: #b5d4c7;
+      color: var(--accent);
+    }
+
+    .pill.risk {
+      background: var(--danger-soft);
+      border-color: #efc2bc;
+      color: var(--danger);
+    }
+
+    .pill.target {
+      background: #e6f3ff;
+      border-color: #bfddf5;
+      color: #165385;
+    }
+
+    .note {
+      margin-top: 18px;
+      border: 1px solid #f2d69a;
+      background: var(--warn-soft);
+      color: var(--warn);
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 13px;
+    }
+
+    @media (max-width: 600px) {
+      h1 {
+        font-size: 26px;
+      }
+
+      .wrap {
+        padding-top: 20px;
+      }
+
+      .node {
+        min-height: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Worker Module Wiring: Current State and Bedrock Path</h1>
+    <p class="subtitle">
+      This diagram maps how the worker currently processes jobs and where Google Vertex is coupled into runtime configuration.
+      It also marks the exact seams where Amazon Bedrock can be introduced behind the same provider contract.
+    </p>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Current Provider Selection</h2>
+        <p class="muted">Configured via <span class="code">AI_PROVIDER</span>, but factory currently supports only <span class="code">vertex</span>.</p>
+      </section>
+      <section class="card">
+        <h2>Runtime Coupling</h2>
+        <p class="muted"><span class="code">worker/main.py</span> passes Google-specific kwargs regardless of provider type.</p>
+      </section>
+      <section class="card">
+        <h2>Main Extension Goal</h2>
+        <p class="muted">Add <span class="code">bedrock</span> provider implementation and provider-specific config branches in factory wiring.</p>
+      </section>
+    </div>
+
+    <div class="diagram">
+      <section class="lane">
+        <h3>Current Wiring (As Implemented)</h3>
+        <div class="nodes">
+          <article class="node">
+            <span class="tag current">Entry</span>
+            <strong>worker/main.py :: main()</strong>
+            <p>Loads config, DB, telemetry, storage, and creates provider instance before starting SQS consumer.</p>
+            <div class="code">get_worker_config() -> get_provider(...)</div>
+          </article>
+
+          <article class="node">
+            <span class="tag current">Factory</span>
+            <strong>worker/providers/__init__.py :: get_provider</strong>
+            <p>Only branch: <span class="code">if provider_type == "vertex"</span> returns <span class="code">GeminiProvider</span>.</p>
+            <div class="code">else: ValueError("Unknown provider")</div>
+          </article>
+
+          <article class="node">
+            <span class="tag current">Implementation</span>
+            <strong>worker/providers/vertex.py :: GeminiProvider</strong>
+            <p>Uses Google GenAI Vertex client for prompt enhancement and image generation.</p>
+            <div class="code">genai.Client(vertexai=True, ...)</div>
+          </article>
+
+          <article class="node">
+            <span class="tag current">Usage</span>
+            <strong>worker/processor.py :: JobProcessor._run_agent</strong>
+            <p>Calls provider via a generic method shape:</p>
+            <div class="code">await ai_provider.generate(...)</div>
+          </article>
+        </div>
+
+        <div class="arrow">main -> factory -> provider implementation -> processor.generate()</div>
+
+        <ul class="seam-list">
+          <li>Good seam already exists: <span class="code">JobProcessor</span> depends on <span class="code">generate(...)</span>, not a concrete Vertex class.</li>
+          <li>Coupling point: provider initialization kwargs in <span class="code">worker/main.py</span> are Google-specific today.</li>
+          <li>Coupling point: <span class="code">worker/config.py</span> currently contains Google model/project fields only for AI settings.</li>
+        </ul>
+      </section>
+
+      <section class="lane">
+        <h3>Target Wiring (Provider-Configurable for Bedrock)</h3>
+        <div class="nodes">
+          <article class="node">
+            <span class="tag target">Config</span>
+            <strong>worker/config.py</strong>
+            <p>Add Bedrock config fields and validation by provider type.</p>
+            <div class="code">AI_PROVIDER=vertex|bedrock</div>
+          </article>
+
+          <article class="node">
+            <span class="tag target">Factory Split</span>
+            <strong>worker/providers/__init__.py</strong>
+            <p>Create provider-specific constructor branches with explicit kwargs per provider.</p>
+            <div class="code">if vertex: GeminiProvider(...)</div>
+            <div class="code">if bedrock: BedrockProvider(...)</div>
+          </article>
+
+          <article class="node">
+            <span class="tag target">New Provider</span>
+            <strong>worker/providers/bedrock.py</strong>
+            <p>Implement same <span class="code">generate(...)</span> interface to keep processor unchanged.</p>
+            <div class="code">class BedrockProvider: async def generate(...)</div>
+          </article>
+
+          <article class="node">
+            <span class="tag current">Stable</span>
+            <strong>worker/processor.py</strong>
+            <p>No structural change needed if provider contract is preserved.</p>
+            <div class="code">JobProcessor remains provider-agnostic</div>
+          </article>
+        </div>
+
+        <div class="arrow">main/config -> factory branch -> vertex or bedrock -> same processor call</div>
+
+        <ul class="seam-list">
+          <li>Introduce an explicit provider protocol (optional but recommended): <span class="code">generate(prompt, input_image_url, style_id, enhance_prompt)</span>.</li>
+          <li>Keep all provider-specific SDK setup inside provider modules, not in <span class="code">worker/main.py</span>.</li>
+          <li>Add tests mirroring existing provider tests: factory selection, config validation, and processor compatibility.</li>
+        </ul>
+      </section>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Wiring Point</th>
+            <th>File</th>
+            <th>Current State</th>
+            <th>Bedrock-Ready Change</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Provider selection</td>
+            <td>worker/providers/__init__.py</td>
+            <td>Single branch for <span class="code">vertex</span></td>
+            <td>Add <span class="code">bedrock</span> branch and provider-specific kwargs handling</td>
+          </tr>
+          <tr>
+            <td>Runtime config</td>
+            <td>worker/config.py</td>
+            <td>Google/Gemini-focused fields</td>
+            <td>Add Bedrock fields (region, model IDs, optional role/profile), validate by selected provider</td>
+          </tr>
+          <tr>
+            <td>Main wiring</td>
+            <td>worker/main.py</td>
+            <td>Always passes Google kwargs into factory call</td>
+            <td>Pass only common kwargs and let factory map provider-specific settings</td>
+          </tr>
+          <tr>
+            <td>Provider implementation</td>
+            <td>worker/providers/vertex.py</td>
+            <td>Gemini + Vertex client implementation</td>
+            <td>Keep as is; add parallel <span class="code">worker/providers/bedrock.py</span></td>
+          </tr>
+          <tr>
+            <td>Processing pipeline</td>
+            <td>worker/processor.py</td>
+            <td>Calls <span class="code">ai_provider.generate(...)</span></td>
+            <td>No interface change required if Bedrock provider matches method contract</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="legend">
+      <span class="pill current">Current</span>
+      <span class="pill target">Target</span>
+      <span class="pill risk">Coupling Risk</span>
+    </div>
+
+    <div class="note">
+      Suggested migration strategy: keep <span class="code">AI_PROVIDER=vertex</span> as default for backward compatibility,
+      add <span class="code">AI_PROVIDER=bedrock</span> behind feature rollout, and verify parity by running existing processor tests
+      against both providers via parametrized test fixtures.
+    </div>
+  </div>
+</body>
+</html>

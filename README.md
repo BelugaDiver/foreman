@@ -112,6 +112,23 @@ ruff format .
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint for tracing | - |
 | `CORS_ORIGINS` | Allowed CORS origins | * |
 
+### Worker AgentCore Mode
+
+For AgentCore-backed generation processing, set:
+
+```bash
+AI_PROVIDER=agentcore
+AGENTCORE_RUNTIME_ARN=arn:aws:bedrock-agentcore:REGION:ACCOUNT:runtime/RUNTIME_ID
+WORKER_DEAD_LETTER_QUEUE_URL=https://sqs.REGION.amazonaws.com/ACCOUNT/foreman-generations-dlq
+RUNTIME_SESSION_PREFIX=proj
+```
+
+Notes:
+- The inbound SQS payload shape is unchanged.
+- Worker persists canonical output in `output_image_url`.
+- Worker persists generated description in `generated_image_description`.
+- Malformed queue messages are sent to the configured DLQ and removed from the main queue.
+
 ### Docker
 
 Docker Compose loads settings from `.env.foreman`. Create it from the example:

@@ -31,6 +31,7 @@ def _generation_record(
         "style_id": "minimal",
         "input_image_url": "https://example.com/original.jpg",
         "output_image_url": None,
+        "generated_image_description": None,
         "error_message": None,
         "model_used": "gpt-image-1",
         "processing_time_ms": None,
@@ -176,6 +177,7 @@ async def test_update_generation_updates_allowed_fields_with_scope() -> None:
     project_id = uuid.uuid4()
     updated_row = _generation_record(generation_id, project_id, status="completed")
     updated_row["output_image_url"] = "https://example.com/result.jpg"
+    updated_row["generated_image_description"] = "A bright modern interior"
     updated_row["processing_time_ms"] = 1375
     updated_row["metadata"] = {"seed": 123}
     db.fetchrow = AsyncMock(return_value=updated_row)
@@ -188,6 +190,7 @@ async def test_update_generation_updates_allowed_fields_with_scope() -> None:
         generation_in=GenerationUpdate(
             status="completed",
             output_image_url="https://example.com/result.jpg",
+            generated_image_description="A bright modern interior",
             processing_time_ms=1375,
             metadata={"seed": 123},
         ),
@@ -199,10 +202,11 @@ async def test_update_generation_updates_allowed_fields_with_scope() -> None:
     stmt = db.fetchrow.await_args.args[0]
     assert "UPDATE generations AS g" in stmt.text
     assert "FROM projects AS p" in stmt.text
-    assert "p.user_id=$6" in stmt.text
+    assert "p.user_id=$7" in stmt.text
     assert stmt.params == (
         "completed",
         "https://example.com/result.jpg",
+        "A bright modern interior",
         1375,
         {"seed": 123},
         generation_id,

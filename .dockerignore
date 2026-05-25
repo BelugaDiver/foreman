@@ -1,0 +1,31 @@
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+
+# Build/test output
+build/
+dist/
+*.egg-info/
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+
+# Repo and editor
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Env and logs
+.env*
+*.log
+
+# Docker files
+Dockerfile*
+.dockerignore

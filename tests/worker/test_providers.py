@@ -2,7 +2,7 @@
 
 import pytest
 
-from worker.providers import GeminiProvider, get_provider
+from worker.providers import AgentCoreProvider, GeminiProvider, get_provider
 
 
 def test_get_provider_vertex_returns_gemini_provider():
@@ -22,3 +22,12 @@ def test_get_provider_unknown_raises():
     """Unknown provider type raises ValueError."""
     with pytest.raises(ValueError, match="Unknown provider"):
         get_provider("unsupported")
+
+
+def test_get_provider_agentcore_returns_provider():
+    """get_provider('agentcore') returns an AgentCoreProvider instance."""
+    provider = get_provider(
+        "agentcore",
+        runtime_arn="arn:aws:bedrock-agentcore:us-east-1:123:runtime/x",
+    )
+    assert isinstance(provider, AgentCoreProvider)

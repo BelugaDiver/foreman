@@ -53,6 +53,15 @@ class WorkerConfig:
     aws_region: str = field(
         default_factory=lambda: os.getenv("AWS_REGION", "us-east-1")
     )
+    agentcore_runtime_arn: str | None = field(
+        default_factory=lambda: os.getenv("AGENTCORE_RUNTIME_ARN")
+    )
+    worker_dead_letter_queue_url: str | None = field(
+        default_factory=lambda: os.getenv("WORKER_DEAD_LETTER_QUEUE_URL")
+    )
+    runtime_session_prefix: str = field(
+        default_factory=lambda: os.getenv("RUNTIME_SESSION_PREFIX", "proj")
+    )
 
     @classmethod
     def from_env(cls) -> "WorkerConfig":

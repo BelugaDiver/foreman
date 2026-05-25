@@ -18,6 +18,7 @@ class Generation:
     style_id: Optional[str]
     input_image_url: str
     output_image_url: Optional[str]
+    generated_image_description: Optional[str]
     error_message: Optional[str]
     model_used: Optional[str]
     processing_time_ms: Optional[int]
