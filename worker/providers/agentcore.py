@@ -111,9 +111,10 @@ class AgentCoreProvider:
         def _call() -> dict[str, Any]:
             common_kwargs = {
                 "agentRuntimeArn": self.runtime_arn,
-                "runtimeSessionId": runtime_session_id,
                 "payload": payload,
             }
+            if runtime_session_id:
+                common_kwargs["runtimeSessionId"] = runtime_session_id
             for method_name in ("invoke_agent_runtime", "invoke_runtime", "invoke"):
                 method = getattr(client, method_name, None)
                 if callable(method):

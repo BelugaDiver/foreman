@@ -85,3 +85,25 @@ async def test_invoke_runtime_uses_supported_method_name():
 
     assert result["payload"]["output_image_url"] == "https://x"
     client.invoke_agent_runtime.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_invoke_runtime_omits_runtime_session_id_when_none():
+    """Provider should omit runtimeSessionId when no runtime session is provided."""
+    provider = AgentCoreProvider(
+        runtime_arn="arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/test",
+        region="us-east-1",
+    )
+
+    client = MagicMock()
+    client.invoke_agent_runtime.return_value = {"payload": {"output_image_url": "https://x"}}
+
+    with patch("worker.providers.agentcore.boto3.client", return_value=client):
+        await provider._invoke_runtime(
+            payload={"prompt": "x"},
+            runtime_session_id=None,
+        )
+
+    client.invoke_agent_runtime.assert_called_once()
+    kwargs = client.invoke_agent_runtime.call_args.kwargs
+    assert "runtimeSessionId" not in kwargs
