@@ -83,6 +83,7 @@ class SQSConsumer:
         aws_access_key_id: str | None = None,
         aws_secret_access_key: str | None = None,
         aws_region: str = "us-east-1",
+        dead_letter_queue_url: str | None = None,
     ):
         self.queue_url = queue_url
         self.process_fn = process_fn
@@ -93,6 +94,7 @@ class SQSConsumer:
         self.aws_access_key_id = aws_access_key_id
         self.aws_secret_access_key = aws_secret_access_key
         self.aws_region = aws_region
+        self.dead_letter_queue_url = dead_letter_queue_url
         self._client = None
         self._running = False
         self._semaphore = asyncio.Semaphore(concurrency)
@@ -150,54 +152,96 @@ class SQSConsumer:
             client = self._get_client()
             actual_retry = 0
             body = {}
-            try:
-                body = json.loads(msg["Body"])
-                message_attributes = msg.get("MessageAttributes")
-                job = GenerationJob.from_message(body, message_attributes)
+            message_attributes = msg.get("MessageAttributes")
 
-                receive_count = int(msg.get("Attributes", {}).get("ApproximateReceiveCount", 1))
-                actual_retry = max(0, receive_count - 1)
+            with tracer.start_as_current_span("handle_sqs_message") as span:
+                span.set_attribute("queue_url", self.queue_url)
+                span.set_attribute("has_dead_letter_queue", bool(self.dead_letter_queue_url))
 
-                logger.info(
-                    "Received job",
-                    extra={
-                        "generation_id": job.generation_id,
-                        "retry": actual_retry,
-                        "user_id": job.user_id,
-                    },
-                )
+                try:
+                    body = json.loads(msg["Body"])
+                    job = GenerationJob.from_message(body, message_attributes)
 
-                await self.process_fn(job, retry_count=actual_retry)
+                    receive_count = int(msg.get("Attributes", {}).get("ApproximateReceiveCount", 1))
+                    actual_retry = max(0, receive_count - 1)
+                    span.set_attribute("generation_id", job.generation_id)
+                    span.set_attribute("project_id", job.project_id)
+                    span.set_attribute("receive_count", receive_count)
+                    span.set_attribute("retry_count", actual_retry)
 
-                await asyncio.to_thread(
-                    client.delete_message,
-                    QueueUrl=self.queue_url,
-                    ReceiptHandle=msg["ReceiptHandle"],
-                )
-                logger.info("Job completed", extra={"generation_id": job.generation_id})
-
-            except (json.JSONDecodeError, MalformedSQSMessageError) as exc:
-                logger.error("Unrecoverable malformed message", extra={"error": str(exc)})
-                # Delete immediately - cannot be processed even with retries
-                await asyncio.to_thread(
-                    client.delete_message,
-                    QueueUrl=self.queue_url,
-                    ReceiptHandle=msg["ReceiptHandle"],
-                )
-
-            except Exception:
-                logger.exception("Failed to process message", extra={"retry": actual_retry})
-
-                if actual_retry >= self.max_retries:
-                    logger.error(
-                        "Max retries exceeded, discarding message",
-                        extra={"generation_id": body.get("generation_id") if body else "unknown"},
+                    logger.info(
+                        "Received job",
+                        extra={
+                            "generation_id": job.generation_id,
+                            "retry": actual_retry,
+                            "user_id": job.user_id,
+                        },
                     )
+
+                    await self.process_fn(job, retry_count=actual_retry)
+
                     await asyncio.to_thread(
                         client.delete_message,
                         QueueUrl=self.queue_url,
                         ReceiptHandle=msg["ReceiptHandle"],
                     )
+                    logger.info("Job completed", extra={"generation_id": job.generation_id})
+                    span.add_event("message_deleted")
+
+                except (json.JSONDecodeError, MalformedSQSMessageError) as exc:
+                    logger.error("Unrecoverable malformed message", extra={"error": str(exc)})
+                    span.set_attribute("error_class", exc.__class__.__name__)
+                    span.add_event("malformed_message")
+                    await self._send_to_dead_letter(msg, str(exc), message_attributes)
+                    # Delete immediately - cannot be processed even with retries
+                    await asyncio.to_thread(
+                        client.delete_message,
+                        QueueUrl=self.queue_url,
+                        ReceiptHandle=msg["ReceiptHandle"],
+                    )
+
+                except Exception as exc:
+                    logger.exception("Failed to process message", extra={"retry": actual_retry})
+                    span.set_attribute("error_class", exc.__class__.__name__)
+
+                    if actual_retry >= self.max_retries:
+                        logger.error(
+                            "Max retries exceeded, discarding message",
+                            extra={
+                                "generation_id": body.get("generation_id")
+                                if body
+                                else "unknown"
+                            },
+                        )
+                        await asyncio.to_thread(
+                            client.delete_message,
+                            QueueUrl=self.queue_url,
+                            ReceiptHandle=msg["ReceiptHandle"],
+                        )
+
+    async def _send_to_dead_letter(
+        self,
+        original_msg: dict,
+        error_reason: str,
+        message_attributes: dict | None,
+    ) -> None:
+        """Send malformed messages to dead-letter queue when configured."""
+        if not self.dead_letter_queue_url:
+            return
+
+        client = self._get_client()
+        body = {
+            "reason": error_reason,
+            "original_message": original_msg.get("Body"),
+            "message_id": original_msg.get("MessageId"),
+            "receive_count": original_msg.get("Attributes", {}).get("ApproximateReceiveCount"),
+        }
+        await asyncio.to_thread(
+            client.send_message,
+            QueueUrl=self.dead_letter_queue_url,
+            MessageBody=json.dumps(body),
+            MessageAttributes=message_attributes or {},
+        )
 
     async def start(self):
         """Run the consumer loop."""

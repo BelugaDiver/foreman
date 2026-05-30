@@ -547,6 +547,7 @@ def test_create_generation_publishes_to_queue(client, headers_a, monkeypatch):
             model_used=generation_in.model_used,
             input_image_url=input_image_url,
             output_image_url=None,
+            generated_image_description=None,
             status="pending",
             attempt=generation_in.attempt or 1,
             error_message=None,

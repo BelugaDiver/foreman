@@ -33,6 +33,8 @@ class ProcessingResult:
     error_message: str | None = None
     processing_time_ms: int | None = None
     retry_count: int = 0
+    generated_image_description: str | None = None
+    idempotent_noop: bool = False
 
 
 class JobProcessor:
@@ -60,6 +62,8 @@ class JobProcessor:
             span.set_attribute("project_id", job.project_id)
             span.set_attribute("prompt_length", len(job.prompt))
             span.set_attribute("retry_count", retry_count)
+            runtime_session_id = self._runtime_session_id_for_project(job.project_id)
+            span.set_attribute("runtime_session_id", runtime_session_id)
 
             try:
                 # Validate user_id from SQS message matches generation's owner
@@ -76,16 +80,38 @@ class JobProcessor:
                 )
                 user_id = job_user_id
 
+                if gen.status in {"completed", "failed"}:
+                    logger.info(
+                        "Skipping terminal redelivery",
+                        extra={"generation_id": job.generation_id, "status": gen.status},
+                    )
+                    span.add_event("terminal_redelivery_noop")
+                    span.set_status(Status(StatusCode.OK))
+                    return ProcessingResult(
+                        success=True,
+                        output_image_url=gen.output_image_url,
+                        retry_count=retry_count,
+                        idempotent_noop=True,
+                    )
+
                 await self._update_status(job.generation_id, user_id, "processing")
                 span.add_event("status_updated_to_processing")
 
-                result = await self._run_agent(job)
+                result = await self._run_agent(job, runtime_session_id=runtime_session_id)
                 span.add_event("agent_completed")
 
-                output_url = await self._upload_to_storage(result["output_image_path"])
-                span.add_event("uploaded_to_storage")
+                output_url: str
+                if result.get("output_image_path"):
+                    output_url = await self._upload_to_storage(result["output_image_path"])
+                    span.add_event("uploaded_to_storage")
+                elif result.get("output_image_url"):
+                    output_url = result["output_image_url"]
+                    span.add_event("used_canonical_output_url")
+                else:
+                    raise ValueError("Agent response did not include output image location")
 
                 processing_time_ms = int((time.time() - start_time) * 1000)
+                generated_description = result.get("generated_image_description")
 
                 await self._update_status(
                     job.generation_id,
@@ -93,6 +119,7 @@ class JobProcessor:
                     "completed",
                     output_image_url=output_url,
                     processing_time_ms=processing_time_ms,
+                    generated_image_description=generated_description,
                 )
 
                 span.set_attribute("output_image_url", output_url)
@@ -104,6 +131,7 @@ class JobProcessor:
                     output_image_url=output_url,
                     processing_time_ms=processing_time_ms,
                     retry_count=retry_count,
+                    generated_image_description=generated_description,
                 )
 
             except Exception as exc:
@@ -145,24 +173,46 @@ class JobProcessor:
 
                 raise
 
-    async def _run_agent(self, job: GenerationJob) -> dict:
+    async def _run_agent(self, job: GenerationJob, runtime_session_id: str) -> dict:
         """Run the agent graph using AI provider."""
         logger.info(
             "Running agent",
             extra={"prompt_length": len(job.prompt), "input_image": job.input_image_url},
         )
 
-        result = await self.ai_provider.generate(
-            prompt=job.prompt,
-            input_image_url=job.input_image_url if job.input_image_url else None,
-            style_id=job.style_id,
-            enhance_prompt=True,
-        )
+        with tracer.start_as_current_span("invoke_ai_provider") as span:
+            span.set_attribute("runtime_session_id", runtime_session_id)
+            span.set_attribute("generation_id", job.generation_id)
+            invoke_started = time.time()
+            result = await self.ai_provider.generate(
+                prompt=job.prompt,
+                input_image_url=job.input_image_url if job.input_image_url else None,
+                style_id=job.style_id,
+                enhance_prompt=True,
+                runtime_session_id=runtime_session_id,
+                generation_id=job.generation_id,
+            )
+            span.set_attribute("ai_invoke_duration_ms", int((time.time() - invoke_started) * 1000))
+            span.set_attribute("ai_model_used", result.model_used)
+            span.set_attribute("ai_outcome", "success")
 
+        output_url = result.output_image_url
+        output_path = (
+            output_url.replace("file://", "") if output_url.startswith("file://") else None
+        )
         return {
-            "output_image_path": result.output_image_url.replace("file://", ""),
+            "output_image_path": output_path,
+            "output_image_url": output_url,
             "model_used": result.model_used,
+            "generated_image_description": getattr(result, "generated_image_description", None),
         }
+
+    def _runtime_session_id_for_project(self, project_id: str) -> str:
+        """Derive a deterministic runtime session identifier from project_id."""
+        session_id = f"{self.config.runtime_session_prefix}-{project_id}"
+        if len(session_id) < 33:
+            session_id = f"{session_id}-session"
+        return session_id
 
     async def _upload_to_storage(self, local_path: str) -> str:
         """Upload generated image via StorageProtocol and return the download URL."""
@@ -189,6 +239,7 @@ class JobProcessor:
         output_image_url: str | None = None,
         error_message: str | None = None,
         processing_time_ms: int | None = None,
+        generated_image_description: str | None = None,
     ):
         """Update generation status in database."""
         if user_id is None:
@@ -204,6 +255,7 @@ class JobProcessor:
             output_image_url=output_image_url,
             error_message=error_message,
             processing_time_ms=processing_time_ms,
+            generated_image_description=generated_image_description,
         )
 
         await gen_repo.update_generation(

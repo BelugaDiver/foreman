@@ -34,6 +34,7 @@ class GenerationUpdate(BaseModel):
 
     status: Optional[GenerationStatus] = None
     output_image_url: Optional[str] = None
+    generated_image_description: Optional[str] = None
     error_message: Optional[str] = None
     processing_time_ms: Optional[int] = None
     metadata: Optional[dict[str, Any]] = None
@@ -53,6 +54,7 @@ class GenerationRead(BaseModel):
     model_used: Optional[str]
     input_image_url: str
     output_image_url: Optional[str]
+    generated_image_description: Optional[str]
     error_message: Optional[str]
     processing_time_ms: Optional[int]
     attempt: int

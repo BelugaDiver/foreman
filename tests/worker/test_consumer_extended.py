@@ -6,10 +6,7 @@ import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
-from worker.consumer import GenerationJob, MalformedSQSMessageError, SQSConsumer
-
+from worker.consumer import GenerationJob, SQSConsumer
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -108,7 +105,10 @@ async def test_poll_empty_response_returns_empty_list():
     mock_sqs = MagicMock()
     mock_sqs.receive_message.return_value = {"Messages": []}
     with patch("worker.consumer.boto3.client", return_value=mock_sqs):
-        with patch("worker.consumer.asyncio.to_thread", new=AsyncMock(return_value={"Messages": []})):
+        with patch(
+            "worker.consumer.asyncio.to_thread",
+            new=AsyncMock(return_value={"Messages": []}),
+        ):
             tasks = await consumer.poll()
     assert tasks == []
 
@@ -209,6 +209,33 @@ async def test_handle_message_malformed_error_deletes_immediately():
 
     process_fn.assert_not_called()
     assert len(deleted) >= 1
+
+
+async def test_handle_message_malformed_error_routes_to_dlq_when_configured():
+    """Malformed messages should be mirrored to DLQ before deleting from source queue."""
+    process_fn = AsyncMock()
+    consumer = _make_consumer(
+        process_fn=process_fn,
+        dead_letter_queue_url="https://sqs.us-east-1.amazonaws.com/123/test-dlq",
+    )
+
+    bad_body = {"generation_id": "x"}
+    msg = _make_sqs_msg(bad_body)
+
+    sent = []
+
+    async def fake_to_thread(fn, *args, **kwargs):
+        name = getattr(fn, "__name__", "")
+        sent.append((name, kwargs))
+        return None
+
+    with patch("worker.consumer.boto3.client", return_value=MagicMock()):
+        with patch("worker.consumer.asyncio.to_thread", side_effect=fake_to_thread):
+            await consumer._handle_message(msg)
+
+    queue_urls = [call[1].get("QueueUrl") for call in sent]
+    assert "https://sqs.us-east-1.amazonaws.com/123/test-dlq" in queue_urls
+    assert "https://sqs.us-east-1.amazonaws.com/123/test" in queue_urls
 
 
 async def test_handle_message_processing_error_below_max_retries_not_deleted():

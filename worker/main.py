@@ -103,6 +103,10 @@ async def main():
         image_model=config.gemini_image_model,
         enhancement_model=config.gemini_enhancement_model,
         allowed_image_domains=config.get_allowed_image_domains(),
+        runtime_arn=config.agentcore_runtime_arn,
+        region=config.aws_region,
+        aws_access_key_id=config.aws_access_key_id,
+        aws_secret_access_key=config.aws_secret_access_key,
     )
 
     storage = get_storage()
@@ -123,6 +127,7 @@ async def main():
         aws_access_key_id=config.aws_access_key_id,
         aws_secret_access_key=config.aws_secret_access_key,
         aws_region=config.aws_region,
+        dead_letter_queue_url=config.worker_dead_letter_queue_url,
     )
     _consumer_instance = consumer
 
