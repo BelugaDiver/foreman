@@ -59,6 +59,17 @@ class AgentCoreProvider:
         **_: Any,
     ) -> AgentCoreResult:
         """Invoke AgentCore and return normalized metadata-only response."""
+        logger.info(
+            "Invoking AgentCore runtime",
+            extra={
+                "runtime_session_id": runtime_session_id,
+                "generation_id": generation_id,
+                "style_id": style_id,
+                "prompt": prompt,
+                "input_image_url": input_image_url,
+            },
+        )
+
         payload = {
             "prompt": prompt,
             "input_image_url": input_image_url,
@@ -69,6 +80,16 @@ class AgentCoreProvider:
         response = await self._invoke_runtime(payload, runtime_session_id=runtime_session_id)
         normalized = self._normalize_response(response)
         self._enforce_metadata_only(normalized)
+
+        logger.info(
+            "AgentCore runtime completed",
+            extra={
+                "runtime_session_id": runtime_session_id,
+                "generation_id": generation_id,
+                "output_image_url": normalized.get("output_image_url"),
+                "generated_image_description": normalized.get("generated_image_description"),
+            },
+        )
 
         return AgentCoreResult(
             output_image_url=normalized["output_image_url"],
