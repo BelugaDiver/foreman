@@ -10,7 +10,7 @@
 ### Session 2026-05-30
 
 - Q: What is the runtime graph contract boundary for img2img execution? → A: Worker retains retry/idempotency/session ownership; graph handles img2img pipeline and returns metadata output.
-- Q: What output format should the runtime graph return for completed img2img executions? → A: Metadata-only payload to avoid ingress costs, with required output_image_url and required descriptive guidance about work performed and enhancement options.
+- Q: What output format should the runtime graph return for completed img2img executions? → A: Metadata-only payload to avoid ingress costs, with required output_image_url and optional descriptive guidance fields aligned to current worker expectations.
 - Q: Should guidance metadata be required even when current worker processor does not require it? → A: No. Runtime response contract should always match current worker AgentCore expectations.
 - Q: What request contract should the runtime accept from the current worker? → A: Required prompt and generation_id, expected input_image_url for img2img, optional style_id, and runtime_session_id passed as an invocation parameter.
 - Q: Should user_id be required as an SQS message attribute? → A: Yes. user_id is required as an SQS message attribute.
@@ -85,7 +85,7 @@ As an on-call engineer, I can detect runtime failures quickly and apply a docume
 - **FR-008**: Initial rollout scope MUST cover development environments only for first delivery.
 - **FR-009**: Runtime security posture MUST enforce least-privilege data access with controlled outbound connectivity governed by environment-level policy.
 - **FR-010**: Runtime failure handling MUST apply a fixed retry limit and move exhausted jobs to dead-letter status for manual requeue only.
-- **FR-011**: Successful runtime responses MUST include a canonical output_image_url and MUST NOT include binary image fields in worker-facing payloads.
+- **FR-011**: Successful runtime responses MUST include a canonical remote output_image_url that is worker-accessible and MUST NOT include binary image fields in worker-facing payloads.
 - **FR-012**: Successful runtime responses MUST match the current worker AgentCore processor contract: required output_image_url, optional generated_image_description, and optional model_used with fallback behavior owned by the worker/provider path.
 - **FR-013**: Runtime invocation payloads MUST accept the current worker request contract: required prompt and generation_id, expected input_image_url for img2img executions, optional style_id, and runtime_session_id supplied as a separate invocation parameter.
 - **FR-014**: Worker-consumed SQS messages MUST include user_id as a required message attribute in addition to required body fields.
