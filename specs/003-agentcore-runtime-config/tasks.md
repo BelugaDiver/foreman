@@ -3,7 +3,7 @@
 **Input**: Design documents from /specs/003-agentcore-runtime-config/
 **Prerequisites**: plan.md (required), spec.md (required), research.md, data-model.md, contracts/
 
-**Tests**: Unit and integration test tasks are explicitly included to satisfy constitution test-layer requirements and measurable success criteria.
+**Tests**: Unit and integration test tasks are explicitly included to validate runtime-host contract compatibility and deployment behavior.
 
 **Organization**: Tasks are grouped by user story so each story can be implemented and validated independently.
 
@@ -15,50 +15,51 @@
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-**Purpose**: Prepare runtime configuration and operator documentation baseline.
+**Purpose**: Create standalone runtime module skeleton and baseline deployment docs.
 
-- [ ] T001 Document AgentCore runtime environment variables in .env.foreman.example
-- [ ] T002 Create runtime operations guide in docs/worker/agentcore-runtime.md
-- [ ] T003 [P] Add feature implementation overview and dev-only rollout scope notes (FR-008) in specs/003-agentcore-runtime-config/quickstart.md
+- [X] T001 Create standalone runtime module skeleton in runtimes/agentcore_img2img/
+- [X] T002 Add runtime module README with local run and contract notes in runtimes/agentcore_img2img/README.md
+- [X] T003 [P] Add dev-only rollout and verification notes (FR-013) in specs/003-agentcore-runtime-config/quickstart.md
+- [X] T004 [P] Create runtime operations guide in docs/runtime/agentcore-runtime.md
 
 ---
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
-**Purpose**: Establish shared contract enforcement required by all user stories.
+**Purpose**: Establish runtime-host contract and deployment baseline required by all stories.
 
 **CRITICAL**: No user story implementation should start until this phase is complete.
 
-- [ ] T004 Enforce required user_id message attribute validation in worker/consumer.py
-- [ ] T005 Add malformed-message reason normalization for DLQ path in worker/consumer.py
-- [ ] T006 Enforce metadata-only runtime response guardrails in worker/providers/agentcore.py
-- [ ] T007 Enforce remote worker-accessible output URL validation (FR-011) in worker/providers/agentcore.py
-- [ ] T008 Add runtime contract violation logging fields for observability in worker/providers/agentcore.py
-- [ ] T009 Update IAM boundary policy documentation with required queue/runtime constraints in docs/worker/agentcore-iam.md
-- [ ] T010 Add explicit development-only runtime rollout guardrails and config checks (FR-008) in worker/config.py
+- [X] T005 Implement AgentCore-required host endpoints GET /ping and POST /invocations in runtimes/agentcore_img2img/app/main.py
+- [X] T006 Add runtime request schema validation for prompt/generation_id/input_image_url/style_id/runtime_session_id in runtimes/agentcore_img2img/app/contracts.py
+- [X] T007 Add runtime response schema enforcing metadata-only output with required output_image_url and optional generated_image_description/model_used in runtimes/agentcore_img2img/app/contracts.py
+- [X] T008 Add tenant context enforcement at runtime invocation boundary (derived from caller-provided user context) in runtimes/agentcore_img2img/app/authz.py
+- [X] T009 Add runtime observability correlation fields (generation_id, runtime_session_id, user context) in runtimes/agentcore_img2img/app/telemetry.py
+- [X] T010 Add ARM64 runtime Dockerfile listening on 0.0.0.0:8080 in runtimes/agentcore_img2img/Dockerfile
+- [X] T011 Add AgentCore control-plane deployment config template in runtimes/agentcore_img2img/deployment/runtime-config.example.json
+- [X] T012 Document required IAM boundaries for runtime execution and invocation in docs/runtime/agentcore-iam.md
 
-**Checkpoint**: Shared queue/runtime contract enforcement is in place.
+**Checkpoint**: Runtime host contract and deployment foundations are in place.
 
 ---
 
-## Phase 3: User Story 1 - Configure Runtime Baseline (Priority: P1) MVP
+## Phase 3: User Story 1 - Deploy Runtime Baseline (Priority: P1) MVP
 
-**Goal**: Ensure worker-to-runtime invocation and response handling follow the agreed img2img contract end-to-end.
+**Goal**: Deploy a standalone runtime host artifact that is compatible with existing worker invocation contract.
 
-**Independent Test**: Publish one valid generation job and confirm worker invokes runtime with contract-compliant request and completes using metadata-only remote URL response.
+**Independent Test**: Invoke deployed runtime with contract-valid payload and verify metadata-only contract-valid response.
 
 ### Tests for User Story 1
 
-- [ ] T011 [P] [US1] Add/extend unit tests for metadata-only response enforcement and remote output URL handling in tests/worker/test_agentcore_provider.py
-- [ ] T012 [P] [US1] Add integration contract test for valid SQS message to runtime completion in tests/worker/integration/test_agentcore_runtime_contract.py
+- [X] T013 [P] [US1] Add runtime host unit tests for request validation and response schema enforcement in runtimes/agentcore_img2img/tests/test_contracts.py
+- [X] T014 [P] [US1] Add runtime integration test for valid /invocations contract flow in runtimes/agentcore_img2img/tests/integration/test_runtime_contract.py
 
 ### Implementation for User Story 1
 
-- [ ] T013 [US1] Align AgentCore invocation payload fields with contract (FR-013) in worker/providers/agentcore.py
-- [ ] T014 [US1] Align runtime session parameter handling with deterministic project-scoped session IDs in worker/processor.py
-- [ ] T015 [P] [US1] Ensure agentcore runtime config fields are complete and documented (FR-001, FR-002) in worker/config.py
-- [ ] T016 [US1] Enforce required SQS body fields and required user_id attributes at publish site (FR-014) in foreman/api/v1/endpoints/projects.py
-- [ ] T017 [US1] Add canonical request/response examples reflecting remote URL contract in docs/worker/agentcore-runtime.md
+- [X] T015 [US1] Implement runtime graph adapter using selected framework (Strands-first) in runtimes/agentcore_img2img/app/graph.py
+- [X] T016 [US1] Implement invocation handler mapping request payload to graph execution and metadata-only response in runtimes/agentcore_img2img/app/handlers.py
+- [X] T017 [P] [US1] Add canonical request/response examples reflecting worker compatibility contract in docs/runtime/agentcore-runtime.md
+- [X] T018 [US1] Add runtime deployment script for control plane create/get/list flows in runtimes/agentcore_img2img/deployment/deploy_runtime.py
 
 **Checkpoint**: User Story 1 is functional and independently verifiable.
 
@@ -66,22 +67,21 @@
 
 ## Phase 4: User Story 2 - Ensure Safe Runtime Access (Priority: P2)
 
-**Goal**: Ensure runtime access boundaries and denial behavior are explicit, enforced, and auditable.
+**Goal**: Enforce runtime access boundaries and auditable deny behavior in standalone runtime host.
 
 **Independent Test**: Attempt allowed and disallowed runtime-related actions and confirm documented deny/allow behavior and auditability signals.
 
 ### Tests for User Story 2
 
-- [ ] T018 [P] [US2] Add/extend unit tests for contract/policy denial logging in tests/worker/test_agentcore_provider.py
-- [ ] T019 [P] [US2] Add integration IAM boundary coverage for allow/deny matrix in tests/worker/integration/test_agentcore_iam_boundary.py
+- [X] T019 [P] [US2] Add runtime unit tests for tenant-context and policy denials in runtimes/agentcore_img2img/tests/test_authz.py
+- [X] T020 [P] [US2] Add runtime integration tests for allow/deny matrix in runtimes/agentcore_img2img/tests/integration/test_runtime_iam_boundary.py
 
 ### Implementation for User Story 2
 
-- [ ] T020 [US2] Add explicit worker/runtime allow-deny matrix for runtime integration (FR-004, FR-009) in docs/worker/agentcore-iam.md
-- [ ] T021 [US2] Emit structured denial events for contract/policy failures (FR-005) in worker/providers/agentcore.py
-- [ ] T022 [P] [US2] Emit ownership-related denial context for missing/invalid user attributes (FR-014) in worker/consumer.py
-- [ ] T023 [US2] Propagate runtime access-boundary context to processing telemetry (FR-006) in worker/processor.py
-- [ ] T024 [US2] Document security validation workflow for operators in docs/worker/agentcore-runtime.md
+- [X] T021 [US2] Implement explicit runtime allow/deny policy checks for model/data/network access in runtimes/agentcore_img2img/app/policy.py
+- [X] T022 [US2] Emit structured denial events for policy and tenant-context failures in runtimes/agentcore_img2img/app/telemetry.py
+- [X] T023 [US2] Add security validation workflow for operators in docs/runtime/agentcore-runtime.md
+- [X] T024 [US2] Document runtime IAM policy matrix and required permissions in docs/runtime/agentcore-iam.md
 
 **Checkpoint**: User Story 2 is functional and independently verifiable.
 
@@ -89,22 +89,21 @@
 
 ## Phase 5: User Story 3 - Operate and Recover Runtime (Priority: P3)
 
-**Goal**: Make runtime failure detection and recovery deterministic with fixed retry and DLQ behavior.
+**Goal**: Make runtime service operations and recovery deterministic without changing worker retry ownership.
 
-**Independent Test**: Simulate runtime failures and verify retry exhaustion, DLQ handling, and recovery runbook steps restore processing.
+**Independent Test**: Simulate runtime host failures and verify detection, health transitions, and recovery runbook steps restore successful invocation behavior.
 
 ### Tests for User Story 3
 
-- [ ] T025 [P] [US3] Add/extend unit tests for retry exhaustion and malformed user attribute handling in tests/worker/test_consumer_extended.py
-- [ ] T026 [P] [US3] Add integration recovery test for runtime unavailability to manual requeue path in tests/worker/integration/test_agentcore_runtime_recovery.py
+- [X] T025 [P] [US3] Add runtime unit tests for degraded dependency and health signaling in runtimes/agentcore_img2img/tests/test_health.py
+- [X] T026 [P] [US3] Add runtime integration recovery tests for temporary unavailability and service restoration in runtimes/agentcore_img2img/tests/integration/test_runtime_recovery.py
 
 ### Implementation for User Story 3
 
-- [ ] T027 [US3] Standardize retry-exhaustion reason codes and DLQ context (FR-010) in worker/consumer.py
-- [ ] T028 [US3] Add runtime failure span events and attributes for incident detection (FR-006) in worker/processor.py
-- [ ] T029 [P] [US3] Ensure worker readiness behavior documents runtime dependency expectations in worker/main.py
-- [ ] T030 [US3] Add operational recovery procedure for fixed retry and manual requeue in docs/worker/agentcore-runtime.md
-- [ ] T031 [US3] Add incident-response quick checklist for runtime outages in specs/003-agentcore-runtime-config/quickstart.md
+- [X] T027 [US3] Implement runtime host health model separating process health and dependency health in runtimes/agentcore_img2img/app/health.py
+- [X] T028 [US3] Add runtime failure spans/events and incident-detection telemetry in runtimes/agentcore_img2img/app/telemetry.py
+- [X] T029 [P] [US3] Add runtime runbook for outage, rollback, and redeploy flows in docs/runtime/agentcore-runtime.md
+- [X] T030 [US3] Add incident-response quick checklist for runtime outages in specs/003-agentcore-runtime-config/quickstart.md
 
 **Checkpoint**: User Story 3 is functional and independently verifiable.
 
@@ -114,13 +113,13 @@
 
 **Purpose**: Final consistency, docs cleanup, and end-to-end validation guidance.
 
-- [ ] T032 [P] Reconcile runtime contract wording across docs (FR-011, FR-012, FR-013) in specs/003-agentcore-runtime-config/contracts/worker-agentcore-contract.md
-- [ ] T033 Cleanup and type-hint refinements for runtime integration paths in worker/providers/agentcore.py
-- [ ] T034 [P] Add SC-002 latency verification assertions to tests/worker/integration/test_agentcore_runtime_contract.py
-- [ ] T035 [P] Add SC-003 incident-detection timing verification to tests/worker/integration/test_agentcore_runtime_recovery.py
-- [ ] T036 [P] Add SC-005 audit completeness verification in tests/worker/integration/test_agentcore_runtime_contract.py
-- [ ] T037 [P] Add final verification command matrix and expected outcomes in specs/003-agentcore-runtime-config/quickstart.md
-- [ ] T038 Update feature notes and final implementation status in specs/003-agentcore-runtime-config/plan.md
+- [X] T031 [P] Reconcile runtime contract wording across docs and examples in specs/003-agentcore-runtime-config/contracts/worker-agentcore-contract.md
+- [X] T032 Cleanup and type-hint refinements in runtime host module code under runtimes/agentcore_img2img/app/
+- [X] T033 [P] Add SC-002 acceptance-latency verification assertions in runtimes/agentcore_img2img/tests/integration/test_runtime_contract.py
+- [X] T034 [P] Add SC-003 incident-detection timing verification in runtimes/agentcore_img2img/tests/integration/test_runtime_recovery.py
+- [X] T035 [P] Add SC-005 audit completeness verification in runtimes/agentcore_img2img/tests/integration/test_runtime_contract.py
+- [X] T036 [P] Add final verification command matrix and expected outcomes in specs/003-agentcore-runtime-config/quickstart.md
+- [X] T037 Update feature notes and final implementation status in specs/003-agentcore-runtime-config/plan.md
 
 ---
 
@@ -151,18 +150,18 @@
 
 ### US1
 
-- T012 can run in parallel with T013 and T014 because it is isolated to tests/worker/integration/test_agentcore_runtime_contract.py.
-- T015 can run in parallel with T013 and T014 because it is isolated to worker/config.py.
+- T014 can run in parallel with T015 and T016 because it is isolated to integration tests.
+- T017 can run in parallel with T015 and T016 because it is documentation-only.
 
 ### US2
 
-- T019 can run in parallel with T021 because it is in tests/worker/integration while T021 is implementation in worker/providers/agentcore.py.
-- T022 can run in parallel with T021 because it touches worker/consumer.py while T021 focuses on worker/providers/agentcore.py.
+- T020 can run in parallel with T021 because integration tests are isolated from policy implementation.
+- T024 can run in parallel with T021 and T022 because it is documentation-only.
 
 ### US3
 
-- T026 can run in parallel with T027 and T028 because test implementation is isolated from runtime logic edits.
-- T029 can run in parallel with T027 and T028 because it is isolated to worker/main.py.
+- T026 can run in parallel with T027 and T028 because tests are isolated from runtime logic edits.
+- T029 can run in parallel with T027 and T028 because runbook documentation is isolated from runtime logic.
 
 ---
 
@@ -170,31 +169,31 @@
 
 ```bash
 # In parallel after foundational tasks:
-Task T011 in tests/worker/test_agentcore_provider.py
-Task T013 in worker/providers/agentcore.py
-Task T014 in worker/processor.py
-Task T015 in worker/config.py
+Task T013 in runtimes/agentcore_img2img/tests/test_contracts.py
+Task T015 in runtimes/agentcore_img2img/app/graph.py
+Task T016 in runtimes/agentcore_img2img/app/handlers.py
+Task T017 in docs/runtime/agentcore-runtime.md
 ```
 
 ## Parallel Example: User Story 2
 
 ```bash
 # In parallel after foundational tasks:
-Task T018 in tests/worker/test_agentcore_provider.py
-Task T019 in tests/worker/integration/test_agentcore_iam_boundary.py
-Task T021 in worker/providers/agentcore.py
-Task T022 in worker/consumer.py
+Task T019 in runtimes/agentcore_img2img/tests/test_authz.py
+Task T020 in runtimes/agentcore_img2img/tests/integration/test_runtime_iam_boundary.py
+Task T021 in runtimes/agentcore_img2img/app/policy.py
+Task T024 in docs/runtime/agentcore-iam.md
 ```
 
 ## Parallel Example: User Story 3
 
 ```bash
 # In parallel after foundational tasks:
-Task T025 in tests/worker/test_consumer_extended.py
-Task T026 in tests/worker/integration/test_agentcore_runtime_recovery.py
-Task T027 in worker/consumer.py
-Task T028 in worker/processor.py
-Task T029 in worker/main.py
+Task T025 in runtimes/agentcore_img2img/tests/test_health.py
+Task T026 in runtimes/agentcore_img2img/tests/integration/test_runtime_recovery.py
+Task T027 in runtimes/agentcore_img2img/app/health.py
+Task T028 in runtimes/agentcore_img2img/app/telemetry.py
+Task T029 in docs/runtime/agentcore-runtime.md
 ```
 
 ---
@@ -205,27 +204,27 @@ Task T029 in worker/main.py
 
 1. Complete Phase 1 and Phase 2.
 2. Complete Phase 3 (US1).
-3. Validate queue-to-runtime contract behavior before expanding scope.
+3. Validate runtime-host contract behavior before expanding scope.
 
 ### Incremental Delivery
 
-1. Deliver US1 contract-complete runtime baseline.
+1. Deliver US1 contract-complete runtime host baseline.
 2. Add US2 runtime access boundaries and denial observability.
-3. Add US3 failure-detection and recovery flow hardening.
+3. Add US3 runtime operations and recovery hardening.
 4. Run Phase 6 polish and finalize operator docs.
 
 ### Team Parallel Strategy
 
-1. One developer completes Phase 1-2 baseline.
+1. One developer completes Phase 1-2 runtime host baseline.
 2. After checkpoint:
-   - Developer A: US1 runtime contract implementation.
+   - Developer A: US1 runtime contract and deployment implementation.
    - Developer B: US2 access boundary hardening.
-   - Developer C: US3 recovery and telemetry tasks.
+   - Developer C: US3 operations and telemetry tasks.
 
 ---
 
 ## Notes
 
 - All checklist entries follow required format: checkbox, task ID, optional [P], required [USx] for user-story phases, and explicit file paths.
-- Avoid changing queue/runtime contracts outside the files listed in tasks unless required by discovered constraints.
+- Avoid changing Foreman API and worker files for this feature. Keep scope to runtime host module, contracts, and runtime docs.
 - Commit at logical checkpoints (Foundational complete, each user story complete, polish complete).

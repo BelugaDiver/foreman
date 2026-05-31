@@ -7,33 +7,33 @@
 
 ## Summary
 
-Configure the AgentCore runtime path for the existing worker so img2img jobs run end-to-end using a strict metadata-only response contract, with worker-owned retry/idempotency/session behavior unchanged. The implementation will formalize queue and runtime contracts, enforce required SQS user_id message attribute handling, preserve least-privilege IAM boundaries, and validate fixed retry-to-DLQ recovery behavior in dev rollout scope.
+Build and deploy a standalone AgentCore runtime host module that is independently versioned and deployable, while preserving strict compatibility with the existing worker request/response contract. The implementation focuses on runtime hosting contract compliance (ARM64, 0.0.0.0:8080, /ping, /invocations), metadata-only outputs, tenant-aware access boundaries, runtime telemetry, and dev-only rollout.
 
 ## Technical Context
 
 **Language/Version**: Python 3.11+  
-**Primary Dependencies**: FastAPI, boto3 (bedrock-agentcore + sqs), asyncpg via foreman.db, OpenTelemetry, pytest  
-**Storage**: PostgreSQL for generation state; object storage URLs (R2/S3-compatible) for image artifacts; SQS for queue transport  
-**Testing**: pytest (unit in tests/worker + tests/foreman, integration in tests/foreman/integration and tests/worker/integration)  
-**Target Platform**: Linux containerized API + worker services in development environment
-**Project Type**: Async backend web-service plus worker process  
-**Performance Goals**: Meet SC-002 and SC-003 from spec (>=95% runtime acceptance within 60s in normal ops; detect incidents within 5 minutes)  
-**Constraints**: Metadata-only runtime responses; no binary image payloads in worker path; fixed retry limit with DLQ; user_id required in SQS message attributes; dev-only initial rollout  
-**Scale/Scope**: One feature slice scoped to worker/runtime contract and runtime configuration behavior for current generation queue flow
+**Primary Dependencies**: Python 3.11+, FastAPI or equivalent HTTP runtime host, selected agent framework (Strands-first), boto3 (bedrock-agentcore-control and bedrock-agentcore), OpenTelemetry, pytest  
+**Storage**: External image/object storage URLs only; no local binary response payload storage in runtime response path  
+**Testing**: pytest (unit and integration for runtime host module only)  
+**Target Platform**: ARM64 Linux container deployed to Amazon Bedrock AgentCore Runtime
+**Project Type**: Standalone runtime service module  
+**Performance Goals**: Meet SC-002 and SC-003 from spec (>=95% invocation acceptance within 60s in normal dev ops; detect incidents within 5 minutes)  
+**Constraints**: Foreman and worker remain unchanged; metadata-only outputs; runtime-compatible contract with current worker expectations; dev-only first rollout  
+**Scale/Scope**: One feature slice scoped to the new runtime host deployable and its deployment operations
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 *Reference: `.specify/memory/constitution.md`*
 
-- [x] **I. Layered Architecture** — change is concentrated in worker/runtime contract and configuration path; worker continues reusing foreman shared layers.
+- [x] **I. Layered Architecture** — change is isolated to a standalone runtime module; existing foreman and worker layers remain untouched.
 - [x] **II. Raw SQL** — no ORM or repository layer replacement introduced by this feature.
-- [x] **III. Async-First** — runtime and queue calls remain async with existing thread offloading for blocking SDK clients.
-- [x] **IV. Event-Driven** — API continues publishing queue messages and worker performs runtime execution asynchronously.
-- [x] **V. Protocols** — queue/storage/provider abstractions remain protocol/factory-driven; no direct endpoint coupling to concrete providers.
-- [x] **VI. Test Layers** — plan includes unit + integration validation for provider contract, IAM boundary, and lifecycle compatibility.
-- [x] **VII. Observability** — runtime session, generation correlation, and failure telemetry remain mandatory in worker path.
-- [x] **VIII. Security** — least-privilege IAM split retained; SQS user ownership attribute requirement formalized.
+- [x] **III. Async-First** — runtime host request handling and model integration remain async-first.
+- [x] **IV. Event-Driven** — runtime module is invoked by existing event-driven worker flow without altering upstream pipeline.
+- [x] **V. Protocols** — runtime module enforces stable invocation/response contract, independent of internal framework details.
+- [x] **VI. Test Layers** — plan includes runtime-host unit and integration validation for contract, security, and operations.
+- [x] **VII. Observability** — runtime session, generation correlation, and failure telemetry are mandatory in the runtime host.
+- [x] **VIII. Security** — least-privilege runtime IAM and tenant context checks are first-class requirements.
 
 ## Project Structure
 
@@ -51,43 +51,44 @@ specs/003-agentcore-runtime-config/
 
 ### Source Code (repository root)
 ```text
-foreman/
-├── api/v1/endpoints/
-├── models/
-├── repositories/
-├── schemas/
-└── queue/
+runtimes/
+└── agentcore_img2img/
+    ├── app/
+    ├── deployment/
+    ├── tests/
+    └── Dockerfile
 
-worker/
-├── consumer.py
-├── processor.py
-├── config.py
-└── providers/
-
-tests/
-├── foreman/
-│   └── integration/
-└── worker/
-    └── integration/
-
-docs/worker/
+docs/runtime/
 ```
 
-**Structure Decision**: Use the existing foreman API + worker split. Implement runtime contract/config updates in worker provider/processor and queue contract touchpoints while keeping shared persistence and API layers unchanged.
+**Structure Decision**: Introduce a dedicated runtime-host module under runtimes/agentcore_img2img. Keep existing foreman and worker code unchanged, and enforce compatibility through runtime contract tests and deployment documentation.
 
 ## Post-Design Constitution Check
 
-- [x] **I. Layered Architecture** — design artifacts preserve foreman/worker layer boundaries.
+- [x] **I. Layered Architecture** — design artifacts preserve foreman/worker boundaries by making runtime host a separate module.
 - [x] **II. Raw SQL** — no ORM introduction; repository contract remains unchanged.
-- [x] **III. Async-First** — design keeps async invocation and to_thread wrapping model.
-- [x] **IV. Event-Driven** — queue-first processing remains the only generation execution entry.
-- [x] **V. Protocols** — runtime integration remains provider/factory mediated.
-- [x] **VI. Test Layers** — unit and integration verification paths are captured in quickstart.
-- [x] **VII. Observability** — runtime correlation and failure telemetry are explicit in contracts.
-- [x] **VIII. Security** — IAM boundary and required SQS user_id attribute are enforced by contract.
+- [x] **III. Async-First** — runtime host contract handlers and framework calls remain async-first.
+- [x] **IV. Event-Driven** — existing queue-first processing remains unchanged; runtime host is a downstream target.
+- [x] **V. Protocols** — runtime invocation and response protocol remains stable regardless of framework internals.
+- [x] **VI. Test Layers** — runtime host tests cover contract, deployment checks, and operational behavior.
+- [x] **VII. Observability** — runtime correlation and failure telemetry are explicit runtime requirements.
+- [x] **VIII. Security** — runtime IAM boundaries and tenant-context gating are explicit runtime requirements.
 
 ## Complexity Tracking
 
 > **Fill ONLY if Constitution Check has violations that must be justified**
 
 No constitution violations identified.
+
+## Implementation Status
+
+- Status: Completed for runtime-host scope.
+- Completion Date: 2026-05-30.
+- Delivered artifacts:
+    - Standalone runtime module under `runtimes/agentcore_img2img/`.
+    - Runtime host endpoints `/ping` and `/invocations` with worker-compatible contracts.
+    - Runtime policy/authz/telemetry/health components and deployment utilities.
+    - Runtime-focused docs and verification matrix under `docs/runtime/` and feature quickstart.
+    - Runtime-focused tests for contract, IAM boundaries, health, recovery, and audit completeness.
+- Validation:
+    - `python -m pytest runtimes/agentcore_img2img/tests -q` passed (16 tests).

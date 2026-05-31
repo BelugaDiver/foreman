@@ -25,6 +25,9 @@
 - agentRuntimeArn: string (required)
 - runtimeSessionId: string (optional, supplied by worker)
 
+### Invocation headers
+- x-user-id: string (required runtime user context)
+
 ### Payload (required)
 - prompt: string
 - generation_id: string
@@ -50,8 +53,9 @@
 ## 4. Error Contract
 - Missing required output_image_url: treated as contract failure.
 - Presence of prohibited binary fields: treated as contract failure.
-- Missing required SQS user_id attribute: treated as malformed job and DLQ path.
+- Missing required x-user-id runtime context: treated as deny (authorization failure).
 
 ## 5. Compatibility Notes
 - Worker provider supports payload wrapper styles where runtime returns top-level fields or nested under payload/artifact.
 - model_used fallback is handled by worker provider path when runtime omits model value.
+- Upstream user_id requirement remains anchored in SQS message attributes; runtime consumes equivalent user context via invocation boundary.

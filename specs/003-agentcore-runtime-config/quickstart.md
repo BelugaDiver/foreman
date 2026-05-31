@@ -1,54 +1,51 @@
-# Quickstart: AgentCore Runtime Configuration
+# Quickstart: AgentCore Runtime Host Module
 
-## 1. Confirm environment and branch
+## 1. Confirm environment and scope
 1. Ensure you are on branch 003-agentcore-runtime-config.
-2. Confirm feature files are under specs/003-agentcore-runtime-config.
+2. Confirm this feature scope is runtime-host only.
+3. Confirm Foreman API and worker code remain unchanged.
 
-## 2. Configure runtime inputs for worker
-1. Set AGENTCORE_RUNTIME_ARN to the target dev runtime.
-2. Set AWS_REGION and worker AWS credentials.
-3. Keep RUNTIME_SESSION_PREFIX configured (default proj) unless intentionally changed.
+## 2. Configure runtime host inputs (dev-only rollout)
+1. Set `RUNTIME_OUTPUT_BASE_URL` to a worker-accessible remote URL prefix.
+2. Optionally set `RUNTIME_ALLOWED_INPUT_DOMAINS` as a comma-separated allowlist.
+3. Optionally set `RUNTIME_MODEL_USED` for response metadata.
+4. Use development environment only for initial rollout.
 
-## 3. Validate queue-to-worker contract
-1. Publish a test SQS message with required body fields:
-   - generation_id
-   - project_id
-   - prompt
-   - input_image_url
-   - created_at
-2. Include user_id as required MessageAttributes entry.
-3. Optionally include style_id and retry_count in body.
+## 3. Run runtime host locally
+1. Start runtime host:
+   - `uvicorn runtimes.agentcore_img2img.app.main:app --host 0.0.0.0 --port 8080`
+2. Validate health endpoint:
+   - `curl http://localhost:8080/ping`
 
 ## 4. Validate runtime request/response contract
-1. Run worker processing for an img2img generation.
-2. Verify runtime invocation payload includes:
-   - prompt
-   - generation_id
-   - input_image_url (img2img path)
-   - optional style_id
-   - runtime_session_id as invocation parameter
-3. Verify runtime response includes:
-   - output_image_url (required)
-   - generated_image_description (optional)
-   - model_used (optional)
-4. Verify response contains no binary_image, image_bytes, or raw_image fields.
+1. Send invocation request:
+   - include `prompt`, `generation_id`, `input_image_url`
+   - optionally include `style_id`, `runtime_session_id`
+   - include header `x-user-id`
+2. Verify success response contains:
+   - `output_image_url` (required)
+   - `generated_image_description` (optional)
+   - `model_used` (optional)
+3. Verify response does not include `binary_image`, `image_bytes`, or `raw_image`.
 
-## 5. Validate failure and retry behavior
-1. Simulate runtime unavailability.
-2. Confirm worker retry behavior follows fixed retry limit.
-3. Confirm exhausted messages go to DLQ and require manual requeue.
+## 5. Validate security boundaries
+1. Call `/invocations` without `x-user-id` and verify deny (403).
+2. Configure `RUNTIME_ALLOWED_INPUT_DOMAINS` and call with disallowed host; verify deny (403).
+3. Verify denial events are emitted with generation/session/user context.
 
-## 6. Validate security boundaries
-1. Confirm worker IAM policy includes:
-   - sqs:ReceiveMessage
-   - sqs:DeleteMessage
-   - sqs:ChangeMessageVisibility
-   - sqs:SendMessage (DLQ only)
-   - bedrock-agentcore:InvokeAgentRuntime
-2. Confirm worker IAM policy excludes direct object write actions for generated artifacts.
-3. Confirm runtime role excludes SQS consume/delete on worker queue.
+## 6. Incident-response quick checklist
+1. Confirm `/ping` status and dependency status.
+2. Check runtime logs for `invocation_failed` and `invocation_denied` events.
+3. Roll back runtime alias/version to last known good image if needed.
+4. Redeploy fixed image and rerun contract tests before restoring traffic.
 
-## 7. Run verification tests
-1. Run worker provider tests focused on AgentCore contract.
-2. Run IAM boundary integration test for worker/runtime split.
-3. Run affected generation lifecycle tests to ensure queue contract remains compatible.
+## 7. Final verification command matrix
+1. Contract/unit checks:
+   - `python -m pytest runtimes/agentcore_img2img/tests/test_contracts.py -q`
+   - `python -m pytest runtimes/agentcore_img2img/tests/test_authz.py -q`
+2. Integration checks:
+   - `python -m pytest runtimes/agentcore_img2img/tests/integration/test_runtime_contract.py -q`
+   - `python -m pytest runtimes/agentcore_img2img/tests/integration/test_runtime_iam_boundary.py -q`
+   - `python -m pytest runtimes/agentcore_img2img/tests/integration/test_runtime_recovery.py -q`
+3. Health checks:
+   - `python -m pytest runtimes/agentcore_img2img/tests/test_health.py -q`
