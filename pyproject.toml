@@ -17,6 +17,7 @@ dependencies = [
     "psycopg[binary]>=3.2.10",
     "python-dotenv>=1.2.2",
     "boto3>=1.41.0",
+    "strands-agents[bedrock]>=1.0.0",
     "google-genai>=1.0.0",
 ]
 
@@ -40,7 +41,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["foreman*"]
+include = ["foreman*", "runtimes*"]
 
 [tool.ruff]
 line-length = 100

@@ -3,7 +3,6 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException, Request
 
 from runtimes.agentcore_img2img.app.contracts import RuntimeInvocationRequest
-from runtimes.agentcore_img2img.app.graph import RuntimeGraphAdapter
 from runtimes.agentcore_img2img.app import handlers
 from runtimes.agentcore_img2img.app.health import get_health_status
 from runtimes.agentcore_img2img.app.policy import RuntimePolicy
@@ -30,7 +29,6 @@ async def invocations(request: Request) -> dict[str, object]:
     response = handlers.process_invocation(
         request,
         payload,
-        graph=RuntimeGraphAdapter(),
         policy=RuntimePolicy(),
     )
     return response.model_dump(mode="json")

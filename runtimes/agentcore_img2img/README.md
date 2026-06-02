@@ -2,6 +2,10 @@
 
 Standalone runtime host module for Amazon Bedrock AgentCore deployment.
 
+## Dependencies
+- Python package requirements are managed via root `pyproject.toml`.
+- Strands runtime dependency: `strands-agents[bedrock]`.
+
 ## Runtime Contract
 - Host: `0.0.0.0`
 - Port: `8080`
@@ -30,4 +34,13 @@ uvicorn runtimes.agentcore_img2img.app.main:app --host 0.0.0.0 --port 8080
 ## Local Test
 ```bash
 python -m pytest runtimes/agentcore_img2img/tests -q
+```
+
+## Control Plane Lifecycle
+```bash
+python -m runtimes.agentcore_img2img.deployment.deploy_runtime create --config runtimes/agentcore_img2img/deployment/runtime-config.example.json
+python -m runtimes.agentcore_img2img.deployment.deploy_runtime list --region us-west-2
+python -m runtimes.agentcore_img2img.deployment.deploy_runtime get --runtime-id <runtime-id> --region us-west-2
+python -m runtimes.agentcore_img2img.deployment.deploy_runtime update --runtime-id <runtime-id> --config runtimes/agentcore_img2img/deployment/runtime-config.example.json
+python -m runtimes.agentcore_img2img.deployment.deploy_runtime delete --runtime-id <runtime-id> --region us-west-2
 ```

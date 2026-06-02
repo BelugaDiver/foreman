@@ -26,6 +26,24 @@ def create_runtime(config_path: Path) -> dict[str, Any]:
     )
 
 
+def update_runtime(runtime_id: str, config_path: Path) -> dict[str, Any]:
+    cfg = _load_config(config_path)
+    region = cfg["region"]
+    client = boto3.client("bedrock-agentcore-control", region_name=region)
+
+    request: dict[str, Any] = {"agentRuntimeId": runtime_id}
+    for field in (
+        "agentRuntimeArtifact",
+        "networkConfiguration",
+        "roleArn",
+        "lifecycleConfiguration",
+    ):
+        if field in cfg:
+            request[field] = cfg[field]
+
+    return client.update_agent_runtime(**request)
+
+
 def get_runtime(runtime_id: str, region: str) -> dict[str, Any]:
     client = boto3.client("bedrock-agentcore-control", region_name=region)
     return client.get_agent_runtime(agentRuntimeId=runtime_id)
@@ -36,12 +54,21 @@ def list_runtimes(region: str) -> dict[str, Any]:
     return client.list_agent_runtimes()
 
 
+def delete_runtime(runtime_id: str, region: str) -> dict[str, Any]:
+    client = boto3.client("bedrock-agentcore-control", region_name=region)
+    return client.delete_agent_runtime(agentRuntimeId=runtime_id)
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Deploy and inspect AgentCore runtimes")
     sub = parser.add_subparsers(dest="command", required=True)
 
     create = sub.add_parser("create", help="Create runtime from json config")
     create.add_argument("--config", required=True, type=Path)
+
+    update = sub.add_parser("update", help="Update runtime from json config")
+    update.add_argument("--runtime-id", required=True)
+    update.add_argument("--config", required=True, type=Path)
 
     get = sub.add_parser("get", help="Get runtime by runtime id")
     get.add_argument("--runtime-id", required=True)
@@ -50,6 +77,10 @@ def _parse_args() -> argparse.Namespace:
     list_cmd = sub.add_parser("list", help="List runtimes")
     list_cmd.add_argument("--region", required=True)
 
+    delete = sub.add_parser("delete", help="Delete runtime by runtime id")
+    delete.add_argument("--runtime-id", required=True)
+    delete.add_argument("--region", required=True)
+
     return parser.parse_args()
 
 
@@ -57,8 +88,12 @@ def main() -> None:
     args = _parse_args()
     if args.command == "create":
         result = create_runtime(args.config)
+    elif args.command == "update":
+        result = update_runtime(args.runtime_id, args.config)
     elif args.command == "get":
         result = get_runtime(args.runtime_id, args.region)
+    elif args.command == "delete":
+        result = delete_runtime(args.runtime_id, args.region)
     else:
         result = list_runtimes(args.region)
 
