@@ -63,7 +63,6 @@ def test_audit_events_emitted_for_success(monkeypatch) -> None:
 
     completed = next(entry for entry in emitted if entry["event"] == "invocation_completed")
     assert completed["generation_id"] == "gen-audit"
-    assert completed["user_id"] == "user-audit"
 
 
 def test_invocation_contract_rejects_invalid_payload() -> None:

@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from fastapi import HTTPException, Request, status
 
-from runtimes.agentcore_img2img.app.authz import require_user_context
 from runtimes.agentcore_img2img.app.contracts import RuntimeInvocationRequest, RuntimeInvocationResponse
-from runtimes.agentcore_img2img.app.graph import RuntimeGraphAdapter
+from runtimes.agentcore_img2img.app.graph import run_graph
 from runtimes.agentcore_img2img.app.policy import RuntimePolicy
 from runtimes.agentcore_img2img.app.telemetry import emit_runtime_event
 
@@ -18,36 +17,33 @@ def process_invocation(
     request: Request,
     payload: RuntimeInvocationRequest,
     *,
-    graph: RuntimeGraphAdapter,
     policy: RuntimePolicy,
 ) -> RuntimeInvocationResponse:
-    user_context = require_user_context(request)
     runtime_session_id = _resolve_runtime_session_id(request, payload)
 
     emit_runtime_event(
         "invocation_received",
         generation_id=payload.generation_id,
         runtime_session_id=runtime_session_id,
-        user_id=user_context.user_id,
     )
 
-    try:
-        policy.validate_request(str(payload.input_image_url), user_context)
-    except HTTPException:
-        emit_runtime_event(
-            "invocation_denied",
-            generation_id=payload.generation_id,
-            runtime_session_id=runtime_session_id,
-            user_id=user_context.user_id,
-            reason="policy_denied",
-        )
-        raise
+    if payload.input_image_url is not None:
+        try:
+            policy.validate_request(str(payload.input_image_url))
+        except HTTPException:
+            emit_runtime_event(
+                "invocation_denied",
+                generation_id=payload.generation_id,
+                runtime_session_id=runtime_session_id,
+                reason="policy_denied",
+            )
+            raise
 
     try:
-        result = graph.run(
+        result = run_graph(
             generation_id=payload.generation_id,
             prompt=payload.prompt,
-            input_image_url=str(payload.input_image_url),
+            input_image_url=str(payload.input_image_url) if payload.input_image_url else None,
             style_id=payload.style_id,
         )
     except ValueError as exc:
@@ -55,7 +51,6 @@ def process_invocation(
             "invocation_failed",
             generation_id=payload.generation_id,
             runtime_session_id=runtime_session_id,
-            user_id=user_context.user_id,
             reason="graph_error",
         )
         raise HTTPException(
@@ -64,16 +59,15 @@ def process_invocation(
         ) from exc
 
     response = RuntimeInvocationResponse(
-        output_image_url=result.output_image_url,
-        generated_image_description=result.generated_image_description,
-        model_used=result.model_used,
+        output_image_url=result["output_image_url"],
+        generated_image_description=result["generated_image_description"],
+        model_used=result["model_used"],
     )
 
     emit_runtime_event(
         "invocation_completed",
         generation_id=payload.generation_id,
         runtime_session_id=runtime_session_id,
-        user_id=user_context.user_id,
         output_image_url=str(response.output_image_url),
     )
     return response

@@ -5,9 +5,6 @@ from urllib.parse import urlparse
 
 from fastapi import HTTPException, status
 
-from runtimes.agentcore_img2img.app.authz import UserContext
-
-
 class RuntimePolicy:
     """Runtime allow/deny policy for tenant and outbound URL constraints."""
 
@@ -19,13 +16,7 @@ class RuntimePolicy:
         configured = os.getenv("RUNTIME_ALLOWED_INPUT_DOMAINS", "")
         return {d.strip().lower() for d in configured.split(",") if d.strip()}
 
-    def validate_request(self, input_image_url: str, user_context: UserContext) -> None:
-        if not user_context.user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="missing user context",
-            )
-
+    def validate_request(self, input_image_url: str) -> None:
         parsed = urlparse(input_image_url)
         host = (parsed.hostname or "").lower()
         if not host:

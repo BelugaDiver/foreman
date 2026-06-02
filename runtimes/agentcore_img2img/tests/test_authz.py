@@ -38,8 +38,6 @@ def test_require_user_context_denies_when_missing() -> None:
 
 def test_policy_denies_disallowed_domain() -> None:
     policy = RuntimePolicy(allowed_input_domains={"allowed.example.com"})
-    req = _request({"x-user-id": "user-123"})
-    ctx = require_user_context(req)
 
     with pytest.raises(HTTPException):
-        policy.validate_request("https://denied.example.com/input.png", ctx)
+        policy.validate_request("https://denied.example.com/input.png")

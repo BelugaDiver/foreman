@@ -8,7 +8,7 @@ class RuntimeInvocationRequest(BaseModel):
 
     prompt: str
     generation_id: str
-    input_image_url: HttpUrl
+    input_image_url: HttpUrl | None = None
     style_id: str | None = None
     runtime_session_id: str | None = None
 
