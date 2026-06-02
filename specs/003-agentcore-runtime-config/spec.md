@@ -15,6 +15,10 @@
 - Q: What request contract should the runtime accept from the current worker? → A: Required prompt and generation_id, expected input_image_url for img2img, optional style_id, and runtime_session_id passed as an invocation parameter.
 - Q: Should user_id be required as an SQS message attribute? → A: Yes. user_id is required as an SQS message attribute.
 
+### Session 2026-06-01
+
+- Q: Should runtime graph implementation be simplified to avoid unnecessary boilerplate classes? → A: Yes. Prefer a minimal functional core with explicit contract boundaries over adapter/dataclass indirection.
+
 ### Clarification Reapplication To Hosted Runtime
 
 - Runtime host MUST stay compatible with the existing worker request and response contract.
@@ -95,6 +99,7 @@ As an on-call engineer, I can detect runtime host failures and restore service u
 - **FR-012**: Runtime host MUST expose operational health and failure indicators sufficient to support detection within target SLO windows.
 - **FR-013**: Initial runtime rollout scope MUST be development environments only.
 - **FR-014**: Compatibility assumption MUST remain explicit: upstream caller continues providing user_id from SQS message attributes; runtime host consumes equivalent user context during invocation authorization.
+- **FR-015**: Runtime graph internals MUST favor a minimal functional implementation (single-call graph function with plain metadata result mapping) unless stateful orchestration is explicitly required.
 
 ### Key Entities *(include if feature involves data)*
 

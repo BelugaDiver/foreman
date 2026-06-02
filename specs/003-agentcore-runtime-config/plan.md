@@ -9,6 +9,10 @@
 
 Build and deploy a standalone AgentCore runtime host module that is independently versioned and deployable, while preserving strict compatibility with the existing worker request/response contract. The implementation focuses on runtime hosting contract compliance (ARM64, 0.0.0.0:8080, /ping, /invocations), metadata-only outputs, tenant-aware access boundaries, runtime telemetry, and dev-only rollout.
 
+## Simplification Direction (2026-06-01)
+
+Reduce internal runtime complexity by using a functional graph core (`run_graph`) instead of adapter/result classes, while preserving all external contracts and telemetry semantics. Keep code paths explicit and linear: validate request -> enforce policy -> run graph function -> map metadata response.
+
 ## Technical Context
 
 **Language/Version**: Python 3.11+  
@@ -83,6 +87,7 @@ No constitution violations identified.
 ## Implementation Status
 
 - Status: Completed for runtime-host scope.
+- Status: Completed for runtime-host scope with simplification pass applied.
 - Completion Date: 2026-05-30.
 - Delivered artifacts:
     - Standalone runtime module under `runtimes/agentcore_img2img/`.

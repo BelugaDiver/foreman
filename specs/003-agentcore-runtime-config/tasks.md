@@ -123,6 +123,38 @@
 
 ---
 
+## Phase 7: Simplification Pass (2026-06-01)
+
+**Purpose**: Re-plan runtime internals to remove unnecessary boilerplate while preserving contracts.
+
+- [X] T038 Replace adapter/result boilerplate with functional graph core in runtimes/agentcore_img2img/app/graph.py
+- [X] T039 Simplify invocation flow wiring to use functional graph API in runtimes/agentcore_img2img/app/handlers.py
+- [X] T040 Remove redundant graph construction in request path in runtimes/agentcore_img2img/app/main.py
+- [X] T041 Re-validate runtime suite after simplification (`pytest runtimes/agentcore_img2img/tests`) and keep behavior parity
+
+---
+
+## Phase 8: Worker–Runtime Compatibility Gaps (2026-06-02)
+
+**Purpose**: Resolve integration gaps discovered during side-by-side audit of worker and runtime invocation paths.
+
+**Gap G-001** — `user_id` auth blocks every invocation.
+`handlers.py` calls `require_user_context(request)` which raises 403 when `x-user-id` header is absent. The boto3 `invoke_agent_runtime` API does not forward custom HTTP headers to the container, so this header is never present. The runtime does not need user identity at this time.
+- [X] T042 Remove mandatory `require_user_context` call from `process_invocation` in runtimes/agentcore_img2img/app/handlers.py; drop `user_id` from telemetry kwargs that depend on it
+
+**Gap G-002** — `input_image_url: None` fails contract validation with 422.
+Worker always sends all payload keys including `input_image_url: null` when no image is present. Runtime contract declares `input_image_url: HttpUrl` (required, non-nullable), so Pydantic rejects the payload before the handler runs.
+- [X] T043 Change `input_image_url` to `HttpUrl | None = None` in `RuntimeInvocationRequest` in runtimes/agentcore_img2img/app/contracts.py
+
+**Gap G-003** — `input_image_url` is received but never consumed by the agent.
+`graph.py` accepts `input_image_url` as a parameter but immediately discards it (`_ = input_image_url`). The configured model (Nova Pro) is multimodal. The image must be fetched from its URL and forwarded to the Strands agent as structured image content.
+- [X] T044 Implement image fetch + multimodal agent call in `run_graph`: fetch image bytes from `input_image_url` via HTTP, detect format, pass structured `[{"text": prompt}, {"image": {"format": ..., "source": {"bytes": ...}}}]` message to `_AGENT` in runtimes/agentcore_img2img/app/graph.py
+- [X] T045 Add `httpx` (or `urllib`/`requests`) to runtime dependencies in runtimes/agentcore_img2img/requirements.txt (if present) or pyproject.toml
+- [X] T046 Add/update tests covering: null `input_image_url` acceptance (G-002), image fetch + agent call path (G-003), and handler invocation without user-id header (G-001) in runtimes/agentcore_img2img/tests/
+- [X] T047 Re-validate full runtime suite after gap fixes (`pytest runtimes/agentcore_img2img/tests`)
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
