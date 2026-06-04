@@ -9,8 +9,9 @@ COPY pyproject.toml README.md ./
 COPY runtimes ./runtimes
 
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir "."
+    pip install --no-cache-dir "." && \
+    pip install --no-cache-dir "bedrock-agentcore>=1.0.0"
 
 EXPOSE 8080
 
-CMD ["uvicorn", "runtimes.agentcore_img2img.app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["python", "runtimes/agentcore_img2img/app/main.py"]

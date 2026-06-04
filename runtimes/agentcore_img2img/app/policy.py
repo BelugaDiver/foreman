@@ -3,10 +3,9 @@ from __future__ import annotations
 import os
 from urllib.parse import urlparse
 
-from fastapi import HTTPException, status
 
 class RuntimePolicy:
-    """Runtime allow/deny policy for tenant and outbound URL constraints."""
+    """Runtime allow/deny policy for outbound URL constraints."""
 
     def __init__(self, allowed_input_domains: set[str] | None = None) -> None:
         self.allowed_input_domains = allowed_input_domains or self._load_allowed_domains()
@@ -20,13 +19,6 @@ class RuntimePolicy:
         parsed = urlparse(input_image_url)
         host = (parsed.hostname or "").lower()
         if not host:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="invalid input_image_url host",
-            )
-
+            raise ValueError("invalid input_image_url: missing host")
         if self.allowed_input_domains and host not in self.allowed_input_domains:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="input_image_url host is not allowed by runtime policy",
-            )
+            raise ValueError(f"input_image_url host '{host}' is not permitted by runtime policy")

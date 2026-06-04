@@ -1,34 +1,53 @@
+"""AgentCore Img2Img Runtime — entry point.
+
+Run locally (from repo root):
+    python runtimes/agentcore_img2img/app/main.py
+
+Deployed: app/*.py are copied flat to the ZIP root.
+Flat imports (graph, contracts, policy) work in both cases because Python
+adds the script's directory to sys.path when running directly.
+"""
+
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException, Request
+import logging
+import os
 
-from runtimes.agentcore_img2img.app.contracts import RuntimeInvocationRequest
-from runtimes.agentcore_img2img.app import handlers
-from runtimes.agentcore_img2img.app.health import get_health_status
-from runtimes.agentcore_img2img.app.policy import RuntimePolicy
+# Safe defaults so the runtime works even without explicit env config.
+# Use the direct regional model ID to avoid the Marketplace subscription
+# required by the cross-region inference profile prefix "global.".
+os.environ.setdefault("RUNTIME_STRANDS_MODEL_ID", "anthropic.claude-haiku-4-5-20251001-v1:0")
+os.environ.setdefault("RUNTIME_OUTPUT_BASE_URL", "https://foreman-output.placeholder.com/generated")
 
-app = FastAPI(title="agentcore-img2img-runtime", version="0.1.0")
+from bedrock_agentcore import BedrockAgentCoreApp  # provided by amazon-bedrock-agentcore
+from contracts import RuntimeInvocationRequest  # siblings in app/ or ZIP root
+from graph import run_graph
+from policy import RuntimePolicy
+
+logger = logging.getLogger(__name__)
+
+_policy = RuntimePolicy()
+app = BedrockAgentCoreApp()
 
 
-@app.get("/ping")
-def ping() -> dict[str, str]:
-    status = get_health_status(dependency_ok=True)
-    return {
-        "status": status.status,
-        "dependency_status": status.dependency_status,
-    }
-
-
-@app.post("/invocations")
-async def invocations(request: Request) -> dict[str, object]:
+@app.entrypoint
+def invoke(payload: dict) -> dict:
+    """Process one image generation invocation."""
     try:
-        payload = RuntimeInvocationRequest.model_validate(await request.json())
+        req = RuntimeInvocationRequest.model_validate(payload)
     except Exception as exc:
-        raise HTTPException(status_code=422, detail="invalid invocation payload") from exc
+        raise ValueError(f"invalid payload: {exc}") from exc
 
-    response = handlers.process_invocation(
-        request,
-        payload,
-        policy=RuntimePolicy(),
+    if req.input_image_url:
+        _policy.validate_request(str(req.input_image_url))
+
+    return run_graph(
+        generation_id=req.generation_id,
+        prompt=req.prompt,
+        input_image_url=str(req.input_image_url) if req.input_image_url else None,
+        style_id=req.style_id,
     )
-    return response.model_dump(mode="json")
+
+
+if __name__ == "__main__":
+    app.run()

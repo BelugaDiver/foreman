@@ -1,33 +1,22 @@
 from __future__ import annotations
 
+import base64
+import io
+import json
 import os
 from urllib.parse import urlparse
 
+import boto3
 import httpx
-
-try:
-    from strands import Agent
-except Exception:  # pragma: no cover - optional dependency in local dev
-    Agent = None
-
-try:
-    from strands.models import BedrockModel
-except Exception:  # pragma: no cover - optional dependency in local dev
-    BedrockModel = None
-
+from PIL import Image
 
 _STRANDS_MODEL_ID = os.getenv("RUNTIME_STRANDS_MODEL_ID", "").strip()
+_BEDROCK_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-2")
 
-if Agent is not None:
-    try:
-        if BedrockModel is not None and _STRANDS_MODEL_ID:
-            _AGENT = Agent(model=BedrockModel(model_id=_STRANDS_MODEL_ID))
-        else:
-            _AGENT = Agent()
-    except Exception:
-        _AGENT = None
-else:
-    _AGENT = None
+try:
+    _BEDROCK = boto3.client("bedrock-runtime", region_name=_BEDROCK_REGION)
+except Exception:  # pragma: no cover
+    _BEDROCK = None
 
 _CONTENT_TYPE_FORMATS: dict[str, str] = {
     "image/jpeg": "jpeg",
@@ -64,38 +53,88 @@ def _fetch_image(url: str) -> tuple[bytes, str] | None:
         return None
 
 
+_MAX_IMAGE_SIDE = 512  # px — keeps base64 payload well under body size limit
+
+
+def _resize_image(image_bytes: bytes, image_format: str) -> tuple[bytes, str]:
+    """Downscale image so neither side exceeds _MAX_IMAGE_SIDE, re-encode as JPEG."""
+    with Image.open(io.BytesIO(image_bytes)) as img:
+        img.thumbnail((_MAX_IMAGE_SIDE, _MAX_IMAGE_SIDE), Image.LANCZOS)
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        return buf.getvalue(), "jpeg"
+
+
 def _invoke_agent(
     prompt: str,
     style_id: str | None,
     image_bytes: bytes | None,
     image_format: str | None,
 ) -> str:
-    """Invoke Strands agent with text + optional image. Returns generated description."""
-    if _AGENT is not None:
-        try:
-            if image_bytes and image_format:
-                message = [
-                    {
-                        "text": (
-                            f"Describe the transformation of this image based on "
-                            f"the following instruction: {prompt}"
-                        )
-                    },
-                    {"image": {"format": image_format, "source": {"bytes": image_bytes}}},
-                ]
-            else:
-                message = f"Summarize this image generation intent in one sentence: {prompt}"
-            response = _AGENT(message)
-            summary = str(response).strip()
-            if summary:
-                return summary
-        except Exception:
-            pass
+    """Call Bedrock invoke_model (Chat Completions format) to get a design response."""
+    if not _BEDROCK or not _STRANDS_MODEL_ID:
+        description = f"Design brief: {prompt[:120]}"
+        return f"{description} (style: {style_id})" if style_id else description
 
-    description = f"Generated from prompt: {prompt[:120]}"
-    if style_id:
-        description = f"{description} (style: {style_id})"
-    return description
+    style_clause = f" Apply the following design style: {style_id}." if style_id else ""
+    system_text = (
+        "You are an expert interior and exterior design consultant and architect. "
+        "You provide detailed, professional design recommendations in response to client briefs. "
+        "Always respond with at least 3 sentences. "
+        "Use Markdown formatting: **bold** key design decisions and material choices, "
+        "use bullet points to list specific elements such as lighting, materials, "
+        "colour palette, furniture, and spatial layout, "
+        "and end with a sentence capturing the overall atmosphere or design intent."
+    )
+
+    if image_bytes and image_format:
+        image_bytes, image_format = _resize_image(image_bytes, image_format)
+        b64 = base64.b64encode(image_bytes).decode("utf-8")
+        user_content = [
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/{image_format};base64,{b64}"},
+            },
+            {
+                "type": "text",
+                "text": (
+                    f"A client has submitted this image along with the following design request: "
+                    f"**{prompt}**{style_clause} "
+                    f"Describe the transformation you would apply to this space."
+                ),
+            },
+        ]
+    else:
+        user_content = (
+            f"A client has submitted the following design brief: "
+            f"**{prompt}**{style_clause} "
+            f"Provide your professional design recommendations."
+        )
+
+    try:
+        body = {
+            "messages": [
+                {"role": "system", "content": system_text},
+                {"role": "user", "content": user_content},
+            ],
+            "max_tokens": 1024,
+            "temperature": 0.7,
+        }
+        resp = _BEDROCK.invoke_model(
+            modelId=_STRANDS_MODEL_ID,
+            body=json.dumps(body),
+        )
+        result = json.loads(resp["body"].read())
+        output = result["choices"][0]["message"]["content"].strip()
+        if output:
+            return output
+    except Exception as exc:
+        return f"[invoke error: {type(exc).__name__}: {exc}]"
+
+    description = f"Design brief: {prompt[:120]}"
+    return f"{description} (style: {style_id})" if style_id else description
 
 
 def run_graph(
