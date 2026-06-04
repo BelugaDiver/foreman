@@ -7,6 +7,8 @@
 
 import * as api from '../api.js';
 import * as state from '../state.js';
+import { removeGenerationFromState } from '../state.js';
+
 import { formatDate, formatDuration, formatStatus, isTerminalStatus, truncate } from './utils.js';
 import { normaliseGeneration } from '../app.js';
 import { setForkParentId } from './generation-form.js';
@@ -82,6 +84,12 @@ function _render(container, gen) {
         <dt>Updated</dt>         <dd>${formatDate(gen.updatedAt)}</dd>
       </dl>
 
+      ${gen.generatedImageDescription ? `
+        <div class="gen-description">
+          <strong>Description</strong>
+          <div class="gen-description-body">${renderMarkdown(gen.generatedImageDescription)}</div>
+        </div>` : ''}
+
       ${gen.inputImageUrl ? `
         <div class="mb-16">
           <strong>Input image:</strong>
@@ -109,6 +117,7 @@ function _render(container, gen) {
           <button class="btn-secondary btn-sm" id="retry-btn">↺ Retry</button>` : ''}
         ${gen.status === 'completed' && gen.outputImageUrl ? `
           <button class="btn-secondary btn-sm" id="fork-btn">⑂ Fork</button>` : ''}
+        <button class="btn-danger btn-sm" id="delete-btn">🗑 Delete</button>
         <button class="btn-secondary btn-sm" id="back-jobs-btn">← Back to Jobs</button>
       </div>
 
@@ -172,6 +181,22 @@ function _render(container, gen) {
     import('../app.js').then(app => app.switchView('job-form'));
   });
 
+  // Delete
+  container.querySelector('#delete-btn').addEventListener('click', async () => {
+    if (!confirm('Delete this generation? This cannot be undone.')) return;
+    const errorEl = container.querySelector('#action-error');
+    try {
+      await api.deleteGeneration(gen.id);
+      removeGenerationFromState(gen.id);
+      stopPolling();
+      state.addNotification('success', 'Generation deleted.');
+      import('../app.js').then(app => app.switchView('job-list'));
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.remove('hidden');
+    }
+  });
+
   // Back to jobs
   container.querySelector('#back-jobs-btn').addEventListener('click', () => {
     import('../app.js').then(app => app.switchView('job-list'));
@@ -184,4 +209,38 @@ function _render(container, gen) {
 
 function escHtml(str) {
   return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** Minimal Markdown → HTML: bold, italic, inline code, bullet lists, paragraphs. */
+function renderMarkdown(text) {
+  if (!text) return '';
+  const lines = text.split('\n');
+  const out = [];
+  let inList = false;
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    const isBullet = /^[-*]\s+/.test(line);
+
+    if (isBullet) {
+      if (!inList) { out.push('<ul>'); inList = true; }
+      out.push(`<li>${_inline(line.replace(/^[-*]\s+/, ''))}</li>`);
+    } else {
+      if (inList) { out.push('</ul>'); inList = false; }
+      if (line === '') {
+        out.push('<br>');
+      } else {
+        out.push(`<p>${_inline(line)}</p>`);
+      }
+    }
+  }
+  if (inList) out.push('</ul>');
+  return out.join('');
+}
+
+function _inline(text) {
+  return escHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code>$1</code>');
 }

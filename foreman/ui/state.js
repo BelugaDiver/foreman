@@ -274,6 +274,14 @@ export function updateGenerationInState(updated) {
   _fire('generations');
 }
 
+export function removeGenerationFromState(genId) {
+  _state.generations.items = _state.generations.items.filter(g => g.id !== genId);
+  if (_state.generations.currentGenerationId === genId) {
+    _state.generations.currentGenerationId = null;
+  }
+  _fire('generations');
+}
+
 export function setCurrentGeneration(genId) {
   _state.generations.currentGenerationId = genId;
   _fire('generations');

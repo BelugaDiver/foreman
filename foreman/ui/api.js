@@ -186,3 +186,8 @@ export async function retryGeneration(generationId) {
 export async function forkGeneration(generationId, payload = {}) {
   return apiRequest('POST', `/v1/generations/${generationId}/fork`, payload);
 }
+
+/** Delete a generation permanently (204 No Content). */
+export async function deleteGeneration(generationId) {
+  return apiRequest('DELETE', `/v1/generations/${generationId}`);
+}

@@ -192,6 +192,7 @@ export function normaliseGeneration(g) {
     prompt: g.prompt,
     styleId: g.style_id ?? null,
     modelUsed: g.model_used ?? null,
+    generatedImageDescription: g.generated_image_description ?? null,
     inputImageUrl: g.input_image_url ?? null,
     outputImageUrl: g.output_image_url ?? null,
     errorMessage: g.error_message ?? null,
