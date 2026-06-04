@@ -53,6 +53,9 @@ class WorkerConfig:
     aws_region: str = field(
         default_factory=lambda: os.getenv("AWS_REGION", "us-east-1")
     )
+    agentcore_region: str = field(
+        default_factory=lambda: os.getenv("AGENTCORE_REGION") or os.getenv("AWS_REGION", "us-east-1")
+    )
     agentcore_runtime_arn: str | None = field(
         default_factory=lambda: os.getenv("AGENTCORE_RUNTIME_ARN")
     )
