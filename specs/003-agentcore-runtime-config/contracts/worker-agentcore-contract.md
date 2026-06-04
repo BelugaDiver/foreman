@@ -26,7 +26,7 @@
 - runtimeSessionId: string (optional, supplied by worker)
 
 ### Invocation headers
-- x-user-id: string (required runtime user context)
+- None required. `boto3` `invoke_agent_runtime` does not forward custom headers to the container; the runtime is user-agnostic. User context is scoped upstream via `user_id` in the SQS message attributes.
 
 ### Payload (required)
 - prompt: string
@@ -53,9 +53,9 @@
 ## 4. Error Contract
 - Missing required output_image_url: treated as contract failure.
 - Presence of prohibited binary fields: treated as contract failure.
-- Missing required x-user-id runtime context: treated as deny (authorization failure).
+- Invalid or disallowed `input_image_url` host (when allowlist is configured): treated as deny (policy failure).
 
 ## 5. Compatibility Notes
 - Worker provider supports payload wrapper styles where runtime returns top-level fields or nested under payload/artifact.
 - model_used fallback is handled by worker provider path when runtime omits model value.
-- Upstream user_id requirement remains anchored in SQS message attributes; runtime consumes equivalent user context via invocation boundary.
+- Upstream user_id requirement remains anchored in SQS message attributes; the runtime is user-agnostic and does not consume or enforce user context.

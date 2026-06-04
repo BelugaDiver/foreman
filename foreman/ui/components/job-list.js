@@ -124,7 +124,7 @@ function _renderPage(container, generations, offset) {
         </div>
         <div class="item-card-right">
           <span class="badge ${cssClass}">${label}</span>
-          <button class="btn-danger btn-sm delete-gen-btn" data-id="${escHtml(gen.id)}" title="Delete generation">🗑</button>
+          <button class="btn-danger btn-sm delete-gen-btn" data-id="${escHtml(gen.id)}" title="Delete generation" aria-label="Delete generation">🗑</button>
         </div>
       </div>`;
     ul.appendChild(li);

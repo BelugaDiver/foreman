@@ -3,12 +3,15 @@ from __future__ import annotations
 import base64
 import io
 import json
+import logging
 import os
 from urllib.parse import urlparse
 
 import boto3
 import httpx
 from PIL import Image
+
+logger = logging.getLogger(__name__)
 
 _STRANDS_MODEL_ID = os.getenv("RUNTIME_STRANDS_MODEL_ID", "").strip()
 _BEDROCK_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-2")
@@ -72,7 +75,7 @@ def _invoke_agent(
     style_id: str | None,
     image_bytes: bytes | None,
     image_format: str | None,
-) -> str:
+) -> str | None:
     """Call Bedrock invoke_model (Chat Completions format) to get a design response."""
     if not _BEDROCK or not _STRANDS_MODEL_ID:
         description = f"Design brief: {prompt[:120]}"
@@ -130,8 +133,9 @@ def _invoke_agent(
         output = result["choices"][0]["message"]["content"].strip()
         if output:
             return output
-    except Exception as exc:
-        return f"[invoke error: {type(exc).__name__}: {exc}]"
+    except Exception:
+        logger.exception("Bedrock model invocation failed; omitting description")
+        return None
 
     description = f"Design brief: {prompt[:120]}"
     return f"{description} (style: {style_id})" if style_id else description

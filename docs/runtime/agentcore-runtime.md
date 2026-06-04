@@ -28,8 +28,8 @@ Optional payload fields:
 - `style_id`
 - `runtime_session_id`
 
-Required headers:
-- `x-user-id`
+Headers:
+- None required. `boto3` `invoke_agent_runtime` does not forward custom headers to the container; the runtime is user-agnostic.
 
 Success response:
 - `output_image_url` (required)
@@ -42,10 +42,9 @@ Prohibited response fields:
 - `raw_image`
 
 ## Security Validation Workflow
-1. Call `/invocations` with allowed input domain and `x-user-id`; expect success.
-2. Call `/invocations` without `x-user-id`; expect 403 deny.
-3. Call `/invocations` with disallowed input domain; expect 403 deny.
-4. Validate deny/success audit events include `generation_id`, `runtime_session_id`, and `user_id`.
+1. Call `/invocations` with allowed input domain; expect success.
+2. Call `/invocations` with disallowed input domain (when `RUNTIME_ALLOWED_INPUT_DOMAINS` is set); expect 403 deny.
+3. Validate deny/success audit events include `generation_id` and `runtime_session_id`.
 
 ## Outage, Rollback, and Redeploy
 1. Detect outage by failed `/ping` or elevated `invocation_failed` events.

@@ -258,5 +258,5 @@ Task T029 in docs/runtime/agentcore-runtime.md
 ## Notes
 
 - All checklist entries follow required format: checkbox, task ID, optional [P], required [USx] for user-story phases, and explicit file paths.
-- Avoid changing Foreman API and worker files for this feature. Keep scope to runtime host module, contracts, and runtime docs.
+- Core scope is the runtime host module, contracts, and runtime docs. Worker and Foreman API/UI changes in this PR (AgentCore region config, retry/fork queueing, generation deletion and description display) are in-scope extensions.
 - Commit at logical checkpoints (Foundational complete, each user story complete, polish complete).

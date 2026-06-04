@@ -12,12 +12,21 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 
-# Safe defaults so the runtime works even without explicit env config.
+# Configure root logger to stdout before any module imports so all loggers
+# (including graph.py, policy.py) emit to the container's stdout stream,
+# which CloudWatch captures via /aws/bedrock-agentcore/runtimes/{agent_id}.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s %(name)s %(message)s",
+    stream=sys.stdout,
+)
+
+# Safe default so the runtime works even without explicit env config.
 # Use the direct regional model ID to avoid the Marketplace subscription
 # required by the cross-region inference profile prefix "global.".
 os.environ.setdefault("RUNTIME_STRANDS_MODEL_ID", "anthropic.claude-haiku-4-5-20251001-v1:0")
-os.environ.setdefault("RUNTIME_OUTPUT_BASE_URL", "https://foreman-output.placeholder.com/generated")
 
 from bedrock_agentcore import BedrockAgentCoreApp  # provided by amazon-bedrock-agentcore
 from contracts import RuntimeInvocationRequest  # siblings in app/ or ZIP root
@@ -39,7 +48,10 @@ def invoke(payload: dict) -> dict:
         raise ValueError(f"invalid payload: {exc}") from exc
 
     if req.input_image_url:
-        _policy.validate_request(str(req.input_image_url))
+        try:
+            _policy.validate_request(str(req.input_image_url))
+        except ValueError as exc:
+            raise PermissionError(str(exc)) from exc
 
     return run_graph(
         generation_id=req.generation_id,

@@ -24,7 +24,7 @@ Standalone runtime host module for Amazon Bedrock AgentCore deployment.
 ```
 
 ## Invocation Headers
-- `x-user-id` (required)
+- None required. `boto3` `invoke_agent_runtime` does not forward custom headers to the container; the runtime is user-agnostic.
 
 ## Local Run
 ```bash
