@@ -235,11 +235,12 @@ pip install -e ".[dev]"
 ```
 
 <!-- SPECKIT START -->
-**Current Feature**: SQS to AgentCore Translation  
-**Plan**: [specs/002-sqs-agentcore-translation/plan.md](specs/002-sqs-agentcore-translation/plan.md)  
-**Spec**: [specs/002-sqs-agentcore-translation/spec.md](specs/002-sqs-agentcore-translation/spec.md)  
+**Current Feature**: AgentCore Runtime Configuration  
+**Plan**: [specs/003-agentcore-runtime-config/plan.md](specs/003-agentcore-runtime-config/plan.md)  
+**Spec**: [specs/003-agentcore-runtime-config/spec.md](specs/003-agentcore-runtime-config/spec.md)  
 **Key Design Docs**:
-- [Data Model](specs/002-sqs-agentcore-translation/data-model.md) — Queue job, runtime session, and generation persistence model
-- [API Contracts](specs/002-sqs-agentcore-translation/contracts/worker-agentcore-contract.md) — queue and AgentCore interface contracts
-- [Quickstart](specs/002-sqs-agentcore-translation/quickstart.md) — Implementation and verification flow
+- [Research](specs/003-agentcore-runtime-config/research.md) — Runtime contract, queue contract, and rollout design decisions
+- [Data Model](specs/003-agentcore-runtime-config/data-model.md) — Runtime profile, execution session, policy, and recovery entities
+- [API Contracts](specs/003-agentcore-runtime-config/contracts/worker-agentcore-contract.md) — Queue and AgentCore request/response contracts
+- [Quickstart](specs/003-agentcore-runtime-config/quickstart.md) — Configuration and verification flow
 <!-- SPECKIT END -->

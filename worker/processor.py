@@ -65,6 +65,7 @@ class JobProcessor:
             runtime_session_id = self._runtime_session_id_for_project(job.project_id)
             span.set_attribute("runtime_session_id", runtime_session_id)
 
+            user_id = None
             try:
                 # Validate user_id from SQS message matches generation's owner
                 if not job.user_id:
@@ -145,8 +146,7 @@ class JobProcessor:
                 if isinstance(exc, MalformedSQSMessageError):
                     error_msg = "Invalid job message format"
 
-                user_id = None
-                if job.user_id:
+                if user_id is None and job.user_id:
                     try:
                         gen = await gen_repo.get_generation_by_id(
                             self.db,

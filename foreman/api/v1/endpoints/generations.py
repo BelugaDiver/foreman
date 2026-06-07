@@ -10,6 +10,8 @@ from foreman.db import Database
 from foreman.exceptions import InvalidStateError, ResourceNotFoundError
 from foreman.logging_config import get_logger
 from foreman.models.user import User
+from foreman.queue.factory import get_queue
+from foreman.queue.protocol import QueueMessage
 from foreman.repositories import postgres_generations_repository as repo
 from foreman.schemas.generation import GenerationCreate, GenerationRead, GenerationUpdate
 
@@ -198,6 +200,32 @@ async def retry_generation(
             "Generation retried",
             extra={"generation_id": str(generation_id), "attempt": generation.attempt},
         )
+        try:
+            queue = get_queue()
+            message = QueueMessage(
+                body={
+                    "generation_id": str(generation.id),
+                    "project_id": str(generation.project_id),
+                    "prompt": generation.prompt,
+                    "style_id": str(generation.style_id) if generation.style_id else None,
+                    "input_image_url": generation.input_image_url,
+                    "created_at": generation.created_at.isoformat(),
+                },
+                message_attributes={
+                    "generation_id": str(generation.id),
+                    "user_id": str(current_user.id),
+                },
+            )
+            await queue.publish(message)
+            logger.info(
+                "Retry generation queued for processing",
+                extra={"generation_id": str(generation.id)},
+            )
+        except Exception:
+            logger.exception(
+                "Failed to queue retry generation for processing",
+                extra={"generation_id": str(generation.id)},
+            )
         return generation
     except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Generation not found")
@@ -249,6 +277,32 @@ async def fork_generation(
             "Generation forked",
             extra={"original_id": str(generation_id), "new_id": str(new_generation.id)},
         )
+        try:
+            queue = get_queue()
+            message = QueueMessage(
+                body={
+                    "generation_id": str(new_generation.id),
+                    "project_id": str(new_generation.project_id),
+                    "prompt": new_generation.prompt,
+                    "style_id": str(new_generation.style_id) if new_generation.style_id else None,
+                    "input_image_url": new_generation.input_image_url,
+                    "created_at": new_generation.created_at.isoformat(),
+                },
+                message_attributes={
+                    "generation_id": str(new_generation.id),
+                    "user_id": str(current_user.id),
+                },
+            )
+            await queue.publish(message)
+            logger.info(
+                "Forked generation queued for processing",
+                extra={"generation_id": str(new_generation.id)},
+            )
+        except Exception:
+            logger.exception(
+                "Failed to queue forked generation for processing",
+                extra={"generation_id": str(new_generation.id)},
+            )
         return new_generation
     except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Generation not found")

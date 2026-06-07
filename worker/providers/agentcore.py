@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -109,9 +110,14 @@ class AgentCoreProvider:
         client = self._get_client()
 
         def _call() -> dict[str, Any]:
+            # boto3 appends /runtime-endpoint/DEFAULT automatically; strip it if
+            # the caller already included it so the ARN isn't doubled.
+            arn = self.runtime_arn
+            if arn and arn.endswith("/runtime-endpoint/DEFAULT"):
+                arn = arn[: -len("/runtime-endpoint/DEFAULT")]
             common_kwargs = {
-                "agentRuntimeArn": self.runtime_arn,
-                "payload": payload,
+                "agentRuntimeArn": arn,
+                "payload": json.dumps(payload).encode("utf-8"),
             }
             if runtime_session_id:
                 common_kwargs["runtimeSessionId"] = runtime_session_id
@@ -128,9 +134,26 @@ class AgentCoreProvider:
         if not isinstance(response, dict):
             raise ValueError("AgentCore response must be a dict")
 
-        payload = response.get("payload", response)
-        if not isinstance(payload, dict):
-            raise ValueError("AgentCore payload must be a dict")
+        # The SDK returns the body as a streaming blob under the "response" key.
+        # Fall back to "payload" for any future SDK shape changes.
+        raw_body = response.get("response") or response.get("payload")
+        if raw_body is None:
+            raise ValueError("AgentCore response has no body (expected 'response' key)")
+
+        if hasattr(raw_body, "read"):
+            raw_body = raw_body.read()
+        if isinstance(raw_body, (bytes, bytearray)):
+            raw_body = raw_body.decode("utf-8")
+
+        if isinstance(raw_body, str):
+            try:
+                payload = json.loads(raw_body)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"AgentCore response body is not valid JSON: {exc}") from exc
+        elif isinstance(raw_body, dict):
+            payload = raw_body
+        else:
+            raise ValueError(f"Unexpected AgentCore response body type: {type(raw_body)}")
 
         artifact = payload.get("artifact", {})
         output_url = payload.get("output_image_url") or artifact.get("output_image_url")

@@ -119,13 +119,29 @@ function _renderPage(container, generations, offset) {
       <div class="item-card" data-id="${escHtml(gen.id)}">
         <div>
           <div class="item-card-title">${escHtml(truncate(gen.prompt, 70))}</div>
-          <div class="item-card-meta">${formatDate(gen.createdAt)}</div>
+          <div class="item-card-meta">${formatDate(gen.createdAt)}${gen.modelUsed ? ` · ${escHtml(gen.modelUsed)}` : ''}</div>
+          ${gen.generatedImageDescription ? `<div class="item-card-desc">${escHtml(truncate(gen.generatedImageDescription, 100))}</div>` : ''}
         </div>
         <div class="item-card-right">
           <span class="badge ${cssClass}">${label}</span>
+          <button class="btn-danger btn-sm delete-gen-btn" data-id="${escHtml(gen.id)}" title="Delete generation" aria-label="Delete generation">🗑</button>
         </div>
       </div>`;
     ul.appendChild(li);
+
+    // Delete button — stop propagation so row click doesn't fire
+    li.querySelector('.delete-gen-btn').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('Delete this generation? This cannot be undone.')) return;
+      try {
+        await api.deleteGeneration(gen.id);
+        state.removeGenerationFromState(gen.id);
+        li.remove();
+        state.addNotification('success', 'Generation deleted.');
+      } catch (err) {
+        state.addNotification('error', `Failed to delete: ${err.message}`);
+      }
+    });
   });
 
   contentEl.innerHTML = '';

@@ -1,0 +1,17 @@
+{
+  "agentRuntimeName": "foreman-img2img-runtime-dev",
+  "region": "us-west-2",
+  "roleArn": "arn:aws:iam::123456789012:role/ForemanAgentCoreRuntimeRole",
+  "networkConfiguration": {
+    "networkMode": "PUBLIC"
+  },
+  "agentRuntimeArtifact": {
+    "containerConfiguration": {
+      "containerUri": "123456789012.dkr.ecr.us-west-2.amazonaws.com/foreman-agentcore-runtime:latest"
+    }
+  },
+  "lifecycleConfiguration": {
+    "idleRuntimeSessionTimeout": 300,
+    "maxLifetime": 1800
+  }
+}

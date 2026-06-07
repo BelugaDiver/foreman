@@ -104,7 +104,7 @@ async def main():
         enhancement_model=config.gemini_enhancement_model,
         allowed_image_domains=config.get_allowed_image_domains(),
         runtime_arn=config.agentcore_runtime_arn,
-        region=config.aws_region,
+        region=config.agentcore_region,
         aws_access_key_id=config.aws_access_key_id,
         aws_secret_access_key=config.aws_secret_access_key,
     )
