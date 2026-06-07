@@ -35,3 +35,27 @@ def test_request_accepts_null_input_image_url() -> None:
         generation_id="gen-1",
     )
     assert req.input_image_url is None
+
+
+def test_response_output_image_bytes_defaults_to_none() -> None:
+    resp = RuntimeInvocationResponse(output_image_url="https://cdn.example.com/out.png")
+    assert resp.output_image_bytes is None
+
+
+def test_response_accepts_valid_base64_output_image_bytes() -> None:
+    import base64
+
+    payload = base64.b64encode(b"\xff\xd8\xff\xe0test").decode()
+    resp = RuntimeInvocationResponse(
+        output_image_url="https://cdn.example.com/out.png",
+        output_image_bytes=payload,
+    )
+    assert resp.output_image_bytes == payload
+
+
+def test_response_ignores_extra_fields() -> None:
+    resp = RuntimeInvocationResponse(
+        output_image_url="https://cdn.example.com/out.png",
+        unknown_future_field="some_value",  # type: ignore[call-arg]
+    )
+    assert not hasattr(resp, "unknown_future_field")
