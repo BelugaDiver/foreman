@@ -1,25 +1,24 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
-import json
 import logging
 import os
+import time
 from urllib.parse import urlparse
 
-import boto3
 import httpx
+from opentelemetry import trace
 from PIL import Image
 
+from runtimes.agentcore_img2img.app.settings import PipelineSettings
+from runtimes.agentcore_img2img.app.stages.generator import GenerationResult, generate_image
+from runtimes.agentcore_img2img.app.stages.rewriter import RewriteResult, rewrite_prompt
+from runtimes.agentcore_img2img.app.stages.verifier import VerificationResult, verify_image
+
 logger = logging.getLogger(__name__)
-
-_STRANDS_MODEL_ID = os.getenv("RUNTIME_STRANDS_MODEL_ID", "").strip()
-_BEDROCK_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-2")
-
-try:
-    _BEDROCK = boto3.client("bedrock-runtime", region_name=_BEDROCK_REGION)
-except Exception:  # pragma: no cover
-    _BEDROCK = None
+tracer = trace.get_tracer(__name__)
 
 _CONTENT_TYPE_FORMATS: dict[str, str] = {
     "image/jpeg": "jpeg",
@@ -37,26 +36,29 @@ _EXT_FORMATS: dict[str, str] = {
     ".gif": "gif",
 }
 
-
-def _fetch_image(url: str) -> tuple[bytes, str] | None:
-    """Fetch image bytes and format from URL. Returns (bytes, format) or None on failure."""
-    try:
-        response = httpx.get(url, follow_redirects=True, timeout=10.0)
-        response.raise_for_status()
-        content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
-        fmt = _CONTENT_TYPE_FORMATS.get(content_type)
-        if not fmt:
-            path = urlparse(url).path.lower()
-            for ext, f in _EXT_FORMATS.items():
-                if path.endswith(ext):
-                    fmt = f
-                    break
-        return (response.content, fmt or "jpeg")
-    except Exception:
-        return None
-
-
 _MAX_IMAGE_SIDE = 512  # px — keeps base64 payload well under body size limit
+
+
+def _fetch_image(url: str) -> tuple[bytes, str]:
+    """Fetch image bytes and format from URL.
+
+    Returns:
+        Tuple of (raw bytes, format string).
+
+    Raises:
+        ValueError: On HTTP error or unrecognisable content type.
+    """
+    response = httpx.get(url, follow_redirects=True, timeout=10.0)
+    response.raise_for_status()
+    content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
+    fmt = _CONTENT_TYPE_FORMATS.get(content_type)
+    if not fmt:
+        path = urlparse(url).path.lower()
+        for ext, f in _EXT_FORMATS.items():
+            if path.endswith(ext):
+                fmt = f
+                break
+    return (response.content, fmt or "jpeg")
 
 
 def _resize_image(image_bytes: bytes, image_format: str) -> tuple[bytes, str]:
@@ -70,105 +72,227 @@ def _resize_image(image_bytes: bytes, image_format: str) -> tuple[bytes, str]:
         return buf.getvalue(), "jpeg"
 
 
-def _invoke_agent(
-    prompt: str,
-    style_id: str | None,
-    image_bytes: bytes | None,
-    image_format: str | None,
-) -> str | None:
-    """Call Bedrock invoke_model (Chat Completions format) to get a design response."""
-    if not _BEDROCK or not _STRANDS_MODEL_ID:
-        description = f"Design brief: {prompt[:120]}"
-        return f"{description} (style: {style_id})" if style_id else description
-
-    style_clause = f" Apply the following design style: {style_id}." if style_id else ""
-    system_text = (
-        "You are an expert interior and exterior design consultant and architect. "
-        "You provide detailed, professional design recommendations in response to client briefs. "
-        "Always respond with at least 3 sentences. "
-        "Use Markdown formatting: **bold** key design decisions and material choices, "
-        "use bullet points to list specific elements such as lighting, materials, "
-        "colour palette, furniture, and spatial layout, "
-        "and end with a sentence capturing the overall atmosphere or design intent."
-    )
-
-    if image_bytes and image_format:
-        image_bytes, image_format = _resize_image(image_bytes, image_format)
-        b64 = base64.b64encode(image_bytes).decode("utf-8")
-        user_content = [
-            {
-                "type": "image_url",
-                "image_url": {"url": f"data:image/{image_format};base64,{b64}"},
-            },
-            {
-                "type": "text",
-                "text": (
-                    f"A client has submitted this image along with the following design request: "
-                    f"**{prompt}**{style_clause} "
-                    f"Describe the transformation you would apply to this space."
-                ),
-            },
-        ]
-    else:
-        user_content = (
-            f"A client has submitted the following design brief: "
-            f"**{prompt}**{style_clause} "
-            f"Provide your professional design recommendations."
-        )
-
-    try:
-        body = {
-            "messages": [
-                {"role": "system", "content": system_text},
-                {"role": "user", "content": user_content},
-            ],
-            "max_tokens": 1024,
-            "temperature": 0.7,
-        }
-        resp = _BEDROCK.invoke_model(
-            modelId=_STRANDS_MODEL_ID,
-            body=json.dumps(body),
-        )
-        result = json.loads(resp["body"].read())
-        output = result["choices"][0]["message"]["content"].strip()
-        if output:
-            return output
-    except Exception:
-        logger.exception("Bedrock model invocation failed; omitting description")
-        return None
-
-    description = f"Design brief: {prompt[:120]}"
-    return f"{description} (style: {style_id})" if style_id else description
+def _encode_b64(data: bytes) -> str:
+    return base64.b64encode(data).decode("utf-8")
 
 
-def run_graph(
+async def run_graph(
     *,
     generation_id: str,
     prompt: str,
     input_image_url: str | None,
     style_id: str | None,
 ) -> dict[str, str | None]:
-    """Run one runtime graph invocation and return metadata-only response fields."""
+    """Run the 3-stage img2img pipeline with a verification loop.
 
-    output_base_url = os.getenv("RUNTIME_OUTPUT_BASE_URL", "").rstrip("/")
-    model_used = (
-        os.getenv("RUNTIME_MODEL_USED", "").strip()
-        or _STRANDS_MODEL_ID
-        or "strands-runtime"
+    Stages:
+      1. Prompt rewriting (Nova Lite multimodal)
+      2. SD ControlNet generation
+      3. Verification loop with score-based retry
+
+    Args:
+        generation_id: Unique ID for this invocation (used in telemetry + URL).
+        prompt: The user's original text prompt.
+        input_image_url: URL to the control/reference image. Required.
+        style_id: Optional style hint (passed through; unused by model calls).
+
+    Returns:
+        Dict matching RuntimeInvocationResponse fields:
+        ``output_image_url``, ``generated_image_description``, ``model_used``,
+        ``output_image_bytes``.
+
+    Raises:
+        ValueError: If ``input_image_url`` is missing or ``RUNTIME_OUTPUT_BASE_URL`` is unset.
+        Exception: Stage 1 errors propagate; Stage 2/3 errors are handled gracefully.
+    """
+    settings = PipelineSettings.from_env()
+
+    output_base_url = settings.output_base_url
+    if not output_base_url:
+        raise ValueError(
+            "RUNTIME_OUTPUT_BASE_URL must be configured; "
+            "set the environment variable before invoking the runtime."
+        )
+
+    if not input_image_url:
+        raise ValueError(
+            "input_image_url is required for this runtime; "
+            "include a valid image URL in the request."
+        )
+
+    # ── Fetch + validate input image ────────────────────────────────────────
+    raw_image_bytes, image_format = await asyncio.to_thread(_fetch_image, input_image_url)
+
+    try:
+        Image.open(io.BytesIO(raw_image_bytes)).verify()
+    except Exception as exc:
+        raise ValueError(f"input_image_url does not point to a valid image: {exc}") from exc
+
+    resized_bytes, image_format = _resize_image(raw_image_bytes, image_format)
+    image_b64 = _encode_b64(resized_bytes)
+
+    # ── Stage 1: Prompt Rewriting ────────────────────────────────────────────
+    with tracer.start_as_current_span("stage1.rewrite_prompt") as span:
+        span.set_attribute("generation_id", generation_id)
+        span.set_attribute("model_id", settings.prompt_rewrite_model_id)
+        stage1_start = time.monotonic()
+        rewrite_result: RewriteResult = await rewrite_prompt(
+            original_prompt=prompt,
+            image_b64=image_b64,
+            image_format=image_format,
+            settings=settings,
+        )
+        span.set_attribute("latency_ms", int((time.monotonic() - stage1_start) * 1000))
+
+    enriched_prompt = rewrite_result.enriched_prompt
+
+    # ── Verification Loop ───────────────────────────────────────────────────
+    loop_start = time.monotonic()
+    iteration = 0
+    correction_context: str | None = None
+
+    best_generation: GenerationResult | None = None
+    best_verification: VerificationResult | None = None
+    best_score: float = -1.0
+    exit_reason: str = "max_iterations"
+
+    # Track the last successful description for FR-007 fallback
+    last_description: str = enriched_prompt
+
+    while iteration < settings.verification_max_iterations:
+        elapsed = time.monotonic() - loop_start
+        remaining = settings.verification_time_budget_seconds - elapsed
+
+        if remaining < settings.verification_iter_estimate_seconds:
+            exit_reason = "time_budget_precheck"
+            logger.info(
+                "Verification loop: exiting before iteration %d — time budget insufficient. "
+                "remaining=%.1fs estimate=%.1fs",
+                iteration,
+                remaining,
+                settings.verification_iter_estimate_seconds,
+            )
+            break
+
+        iteration += 1
+        logger.info(
+            "Verification loop iteration %d / %d",
+            iteration,
+            settings.verification_max_iterations,
+        )
+
+        # ── Stage 2: SD ControlNet Generation ───────────────────────────────
+        with tracer.start_as_current_span("stage2.generate_image") as span:
+            span.set_attribute("generation_id", generation_id)
+            span.set_attribute("model_id", settings.sd_model_id)
+            span.set_attribute("iteration", iteration)
+            stage2_start = time.monotonic()
+            gen_result: GenerationResult = await generate_image(
+                enriched_prompt=enriched_prompt,
+                control_image_bytes=resized_bytes,
+                control_image_format=image_format,
+                settings=settings,
+            )
+            span.set_attribute("latency_ms", int((time.monotonic() - stage2_start) * 1000))
+            span.set_attribute("finish_reason", gen_result.finish_reason or "success")
+
+        if not gen_result.image_bytes:
+            logger.warning(
+                "Stage 2 failed on iteration %d (finish_reason=%r); "
+                "continuing to next iteration.",
+                iteration,
+                gen_result.finish_reason,
+            )
+            continue
+
+        # ── Stage 3: Verification ────────────────────────────────────────────
+        with tracer.start_as_current_span("stage3.verify_image") as span:
+            span.set_attribute("generation_id", generation_id)
+            span.set_attribute("model_id", settings.prompt_rewrite_model_id)
+            span.set_attribute("iteration", iteration)
+            stage3_start = time.monotonic()
+            ver_result: VerificationResult = await verify_image(
+                original_prompt=prompt,
+                reference_image_b64=image_b64,
+                candidate_image_b64=gen_result.image_b64,
+                settings=settings,
+            )
+            span.set_attribute("latency_ms", int((time.monotonic() - stage3_start) * 1000))
+            span.set_attribute("composite_score", ver_result.composite_score)
+            span.set_attribute("prompt_alignment", ver_result.prompt_alignment)
+            span.set_attribute("structural_fidelity", ver_result.structural_fidelity)
+            span.set_attribute("parse_failed", ver_result.parse_failed)
+
+        logger.info(
+            "Iteration %d: composite=%.3f prompt_alignment=%d structural_fidelity=%d "
+            "parse_failed=%s exit_reason_candidate=%s",
+            iteration,
+            ver_result.composite_score,
+            ver_result.prompt_alignment,
+            ver_result.structural_fidelity,
+            ver_result.parse_failed,
+            "threshold_met" if ver_result.composite_score >= settings.verification_alignment_threshold else "continue",
+        )
+
+        # Update best tracking
+        if ver_result.composite_score > best_score:
+            best_score = ver_result.composite_score
+            best_generation = gen_result
+            best_verification = ver_result
+
+        if ver_result.description:
+            last_description = ver_result.description
+
+        # Fail-open: parse failure → accept current result, exit
+        if ver_result.parse_failed:
+            exit_reason = "verification_parse_failure"
+            logger.info("Verification loop: fail-open exit on iteration %d", iteration)
+            break
+
+        # Threshold met → exit early
+        if ver_result.composite_score >= settings.verification_alignment_threshold:
+            exit_reason = "threshold_met"
+            logger.info(
+                "Verification loop: threshold met (%.3f >= %.3f) on iteration %d",
+                ver_result.composite_score,
+                settings.verification_alignment_threshold,
+                iteration,
+            )
+            break
+
+        # Prepare next iteration: use correction context to refine prompt
+        correction_context = ver_result.description
+        with tracer.start_as_current_span("stage1.rewrite_prompt.refinement") as span:
+            span.set_attribute("generation_id", generation_id)
+            span.set_attribute("model_id", settings.prompt_rewrite_model_id)
+            span.set_attribute("iteration", iteration)
+            rewrite_result = await rewrite_prompt(
+                original_prompt=prompt,
+                image_b64=image_b64,
+                image_format=image_format,
+                settings=settings,
+                correction_context=correction_context,
+            )
+        enriched_prompt = rewrite_result.enriched_prompt
+
+    # ── Loop exit telemetry ──────────────────────────────────────────────────
+    total_ms = int((time.monotonic() - loop_start) * 1000)
+    logger.info(
+        "Verification loop complete. exit_reason=%s iterations=%d total_ms=%d best_score=%.3f",
+        exit_reason,
+        iteration,
+        total_ms,
+        best_score,
     )
 
-    if not output_base_url:
-        raise ValueError("RUNTIME_OUTPUT_BASE_URL must be configured")
-
-    image_bytes: bytes | None = None
-    image_format: str | None = None
-    if input_image_url:
-        fetched = _fetch_image(input_image_url)
-        if fetched:
-            image_bytes, image_format = fetched
+    # ── Build response ───────────────────────────────────────────────────────
+    output_image_bytes: str | None = None
+    if best_generation and best_generation.image_bytes:
+        output_image_bytes = best_generation.image_b64
 
     return {
-        "output_image_url": f"{output_base_url}/{generation_id}.png",
-        "generated_image_description": _invoke_agent(prompt, style_id, image_bytes, image_format),
-        "model_used": model_used,
+        "output_image_url": f"{output_base_url}/{generation_id}.jpg",
+        "generated_image_description": last_description,
+        "model_used": settings.prompt_rewrite_model_id,
+        "output_image_bytes": output_image_bytes,
     }
