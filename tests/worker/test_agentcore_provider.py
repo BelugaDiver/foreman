@@ -10,8 +10,8 @@ from worker.providers.agentcore import AgentCoreProvider
 
 
 @pytest.mark.asyncio
-async def test_generate_normalizes_response_and_enforces_metadata_only():
-    """Provider returns normalized output URL and description for metadata-only payloads."""
+async def test_generate_normalizes_response():
+    """Provider returns normalized output URL and description."""
     provider = AgentCoreProvider(
         runtime_arn="arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/test",
         region="us-east-1",
@@ -36,26 +36,6 @@ async def test_generate_normalizes_response_and_enforces_metadata_only():
     assert result.output_image_url == "https://cdn.example.com/out.png"
     assert result.generated_image_description == "A warm interior scene"
     assert result.model_used == "agentcore-v1"
-
-
-@pytest.mark.asyncio
-async def test_generate_rejects_binary_payload_fields():
-    """Provider rejects responses that include raw image bytes in worker path."""
-    provider = AgentCoreProvider(
-        runtime_arn="arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/test",
-        region="us-east-1",
-    )
-
-    response = {
-        "payload": {
-            "output_image_url": "https://cdn.example.com/out.png",
-            "binary_image": "AAECAw==",
-        }
-    }
-
-    with patch.object(provider, "_invoke_runtime", return_value=response):
-        with pytest.raises(ValueError, match="metadata-only"):
-            await provider.generate(prompt="x")
 
 
 @pytest.mark.asyncio
@@ -107,3 +87,64 @@ async def test_invoke_runtime_omits_runtime_session_id_when_none():
     client.invoke_agent_runtime.assert_called_once()
     kwargs = client.invoke_agent_runtime.call_args.kwargs
     assert "runtimeSessionId" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_generate_returns_output_image_bytes_when_present():
+    """Provider populates output_image_bytes on AgentCoreResult when present in response."""
+    import base64
+
+    provider = AgentCoreProvider(
+        runtime_arn="arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/test",
+        region="us-east-1",
+    )
+    img_b64 = base64.b64encode(b"\xff\xd8\xff\xe0fake_jpeg").decode()
+
+    response = {
+        "payload": {
+            "output_image_url": "https://cdn.example.com/out.jpg",
+            "generated_image_description": "A bright room",
+            "model_used": "nova-lite",
+            "output_image_bytes": img_b64,
+        }
+    }
+
+    with patch.object(provider, "_invoke_runtime", return_value=response):
+        result = await provider.generate(
+            prompt="a room",
+            generation_id="gen-abc",
+        )
+
+    assert result.output_image_bytes == img_b64
+
+
+@pytest.mark.asyncio
+async def test_generate_output_image_bytes_absent_returns_none():
+    """Provider sets output_image_bytes=None when field is absent from response."""
+    provider = AgentCoreProvider(
+        runtime_arn="arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/test",
+        region="us-east-1",
+    )
+
+    response = {
+        "payload": {
+            "output_image_url": "https://cdn.example.com/out.jpg",
+        }
+    }
+
+    with patch.object(provider, "_invoke_runtime", return_value=response):
+        result = await provider.generate(prompt="a room", generation_id="gen-xyz")
+
+    assert result.output_image_bytes is None
+
+
+@pytest.mark.asyncio
+async def test_generate_invalid_base64_raises_on_decode():
+    """Corrupted output_image_bytes raises when decoded via _decode_image_bytes_to_temp_file."""
+    provider = AgentCoreProvider(
+        runtime_arn="arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/test",
+        region="us-east-1",
+    )
+
+    with pytest.raises(Exception):
+        await provider._decode_image_bytes_to_temp_file("!!!NOT_VALID_BASE64!!!")

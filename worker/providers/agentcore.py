@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
+import os
+import tempfile
 from dataclasses import dataclass
 from typing import Any
 
@@ -21,6 +24,7 @@ class AgentCoreResult:
     output_image_url: str
     model_used: str
     generated_image_description: str | None = None
+    output_image_bytes: str | None = None
 
 
 class AgentCoreProvider:
@@ -80,7 +84,6 @@ class AgentCoreProvider:
 
         response = await self._invoke_runtime(payload, runtime_session_id=runtime_session_id)
         normalized = self._normalize_response(response)
-        self._enforce_metadata_only(normalized)
 
         logger.info(
             "AgentCore runtime completed",
@@ -89,6 +92,7 @@ class AgentCoreProvider:
                 "generation_id": generation_id,
                 "output_image_url": normalized.get("output_image_url"),
                 "generated_image_description": normalized.get("generated_image_description"),
+                "has_output_image_bytes": normalized.get("output_image_bytes") is not None,
             },
         )
 
@@ -96,6 +100,7 @@ class AgentCoreProvider:
             output_image_url=normalized["output_image_url"],
             model_used=normalized.get("model_used", "agentcore"),
             generated_image_description=normalized.get("generated_image_description"),
+            output_image_bytes=normalized.get("output_image_bytes"),
         )
 
     async def _invoke_runtime(
@@ -165,13 +170,29 @@ class AgentCoreProvider:
             "output_image_url": output_url,
             "generated_image_description": payload.get("generated_image_description"),
             "model_used": payload.get("model_used", "agentcore"),
-            "binary_image": payload.get("binary_image"),
-            "image_bytes": payload.get("image_bytes"),
-            "raw_image": payload.get("raw_image"),
+            "output_image_bytes": payload.get("output_image_bytes"),
         }
 
-    def _enforce_metadata_only(self, normalized: dict[str, Any]) -> None:
-        """Reject responses that include raw image bytes in worker path."""
-        for key in ("binary_image", "image_bytes", "raw_image"):
-            if normalized.get(key) is not None:
-                raise ValueError("AgentCore response must be metadata-only (no binary image data)")
+    async def _decode_image_bytes_to_temp_file(
+        self, output_image_bytes: str | None
+    ) -> str | None:
+        """Decode base64 output_image_bytes to a temp file; return path or None.
+
+        The returned path is used by the worker processor's upload branch.
+        File I/O is wrapped in asyncio.to_thread() to avoid blocking the loop.
+        """
+        if not output_image_bytes:
+            return None
+
+        def _write() -> str:
+            raw = base64.b64decode(output_image_bytes)
+            fd, path = tempfile.mkstemp(suffix=".jpg")
+            try:
+                with os.fdopen(fd, "wb") as f:
+                    f.write(raw)
+            except Exception:
+                os.unlink(path)
+                raise
+            return path
+
+        return await asyncio.to_thread(_write)
