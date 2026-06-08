@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from __future__ import annotations
+
 import base64
 import io
 import json
@@ -218,7 +220,35 @@ async def test_sd_model_id_env_override_reaches_bedrock(
             settings=custom_settings,
         )
 
+
+async def test_structural_negative_terms_appended_to_negative_prompt(
+    settings: PipelineSettings, control_image: bytes
+) -> None:
+    """_STRUCTURAL_NEGATIVE_TERMS are always appended to the negative prompt sent to SD."""
+    from runtimes.agentcore_img2img.app.stages.generator import _STRUCTURAL_NEGATIVE_TERMS
+
+    output_b64 = base64.b64encode(_make_jpeg_bytes()).decode()
+    mock_client = MagicMock()
+    mock_client.invoke_model.return_value = _make_sd_response(output_b64, finish_reason=None)
+
+    custom_negative = "dark, cluttered"
+
+    with patch(
+        "runtimes.agentcore_img2img.app.stages.generator._build_bedrock_client",
+        return_value=mock_client,
+    ):
+        await generate_image(
+            enriched_prompt="a bright room",
+            control_image_bytes=control_image,
+            control_image_format="jpeg",
+            settings=settings,
+            negative_prompt=custom_negative,
+        )
+
     call_kwargs = mock_client.invoke_model.call_args
-    assert call_kwargs.kwargs.get("modelId") == custom_model or (
-        call_kwargs.args and call_kwargs.args[0] == custom_model
-    )
+    body = json.loads(call_kwargs.kwargs["body"])
+    sent_negative = body["negative_prompt"]
+    assert custom_negative in sent_negative
+    assert "new window" in sent_negative
+    assert "new skylight" in sent_negative
+    assert "relocated door" in sent_negative

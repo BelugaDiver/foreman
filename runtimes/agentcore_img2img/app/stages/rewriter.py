@@ -15,19 +15,65 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_INSTRUCTION = (
-    "You are an expert interior design prompt engineer for Stable Diffusion. "
-    "The user will give you a short instruction and a photo of a room. "
-    "Your job is to produce a single detailed text prompt that will guide a Stable Diffusion ControlNet model "
-    "to redesign the room according to the instruction while preserving its structural layout. "
-    "Rules: "
-    "1. Describe the redesigned room as if it already exists — present tense, photorealistic. "
-    "2. Include: lighting conditions, materials (flooring, walls, fabrics), furniture style, colour palette, "
-    "   decorative objects, and atmosphere. "
-    "3. Do NOT describe what to remove — only describe what the finished room looks like. "
-    "4. Do NOT include the word 'realistic' or photographic meta-language like 'shot with'. "
-    "5. Output ONLY the prompt text — no preamble, no bullets, no explanation."
-)
+_SYSTEM_INSTRUCTION = """\
+You are an expert interior design analyst and Stable Diffusion prompt engineer.
+The user will give you a short instruction and a photo of a room.
+
+Your job is to analyse the image, infer the intended interior design style from \
+the instruction (even if vague — e.g. "cozy" → Scandinavian hygge, warm \
+textiles, soft lighting), and identify exactly which elements of the room should \
+change to realise that intent.
+
+Respond ONLY with a JSON object — no markdown fences, no explanation — in this \
+exact shape:
+{
+  "elements": [
+    "<element in the image> → <what it becomes>",
+    ...
+  ],
+  "positive_prompt": "<60–200 word SD prompt describing the finished room>",
+  "negative_prompt": "<comma-separated list of things to avoid>"
+}
+
+Rules for "elements":
+- List every specific object, surface, or fixture that changes (e.g. \
+"sofa → low-profile linen sectional in warm oat", "pendant light → brushed \
+brass arc floor lamp").
+- NEVER include walls, ceiling height, room layout, or any other load-bearing \
+or structural feature unless the user's instruction explicitly and \
+unambiguously requests that specific change. When in doubt, leave it out.
+- Windows and doors: you MAY change the style, frame finish, glazing, or \
+hardware of existing windows and doors if the user's intent calls for it \
+(e.g. "industrial" → black steel-framed windows). You must NEVER add, \
+remove, or relocate a window or door opening — openings are fixed by the \
+building structure and cannot be changed without construction.
+- NEVER add a skylight or any new opening that does not already exist in \
+the photo. Do not invent light sources by adding architecture.
+- If the instruction implies a drastic spatial change (e.g. "open plan", \
+"remove the wall"), include a structural note like \
+"room layout → open-plan with no dividing wall".
+
+Rules for "positive_prompt":
+- Write in present tense as if the redesigned room already exists.
+- Cover: lighting quality and colour temperature, flooring material and \
+finish, wall treatment, each piece of furniture (style, material, colour), \
+textiles and soft furnishings, decorative objects, and overall atmosphere.
+- Use precise interior design vocabulary — not generic words like "nice" \
+or "beautiful".
+- Do NOT add, remove, or relocate any window or door opening. You may \
+describe changes to the style, frame, or glazing of windows and doors that \
+already exist in the photo if the user's intent calls for it.
+- Do NOT add skylights or any new opening not visible in the original photo.
+- Do NOT use the word "realistic" or photographic meta-language like \
+"shot with" or "DSLR".
+
+Rules for "negative_prompt":
+- List artefacts, distortions, and stylistic clashes specific to the \
+requested style that Stable Diffusion commonly produces.
+- Always include: ugly, deformed, blurry, watermark, text, signature.
+- Add style-specific exclusions (e.g. for minimalist: ornate, cluttered, \
+maximalist; for rustic: chrome, plastic, futuristic).
+"""
 
 
 @dataclass
@@ -35,18 +81,49 @@ class RewriteResult:
     """Output of Stage 1 prompt rewriting.
 
     Attributes:
-        enriched_prompt: The full rewritten prompt for SD (never empty).
+        positive_prompt: SD positive prompt describing the finished room.
+        negative_prompt: SD negative prompt listing things to avoid.
+        elements: Surgical list of element-level changes (for telemetry).
         model_id: Bedrock model ID used (for telemetry).
         latency_ms: Wall-clock milliseconds for the Bedrock call.
     """
 
-    enriched_prompt: str
+    positive_prompt: str
+    negative_prompt: str
+    elements: list[str]
     model_id: str
     latency_ms: int
+
+    @property
+    def enriched_prompt(self) -> str:
+        """Alias for positive_prompt (backwards compatibility)."""
+        return self.positive_prompt
 
 
 def _build_bedrock_client(region: str) -> object:
     return boto3.client("bedrock-runtime", region_name=region)
+
+
+def _parse_gemma_json(raw: str, original_prompt: str) -> tuple[str, str, list[str]]:
+    """Leniently parse Gemma's JSON output into (positive_prompt, negative_prompt, elements).
+
+    Strips markdown fences if present, then attempts JSON parsing. Falls back to
+    using ``raw`` as the positive_prompt when parsing fails.
+    """
+    text = raw.strip()
+    # Strip ```json ... ``` or ``` ... ``` fences
+    if text.startswith("```"):
+        lines = text.splitlines()
+        text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:]).strip()
+    try:
+        data = json.loads(text)
+        positive = str(data.get("positive_prompt") or "").strip() or original_prompt
+        negative = str(data.get("negative_prompt") or "").strip()
+        elements = [str(e) for e in data.get("elements") or []]
+        return positive, negative, elements
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        logger.warning("Stage 1 returned non-JSON output; using raw text as positive_prompt.")
+        return raw.strip() or original_prompt, "", []
 
 
 def _invoke_gemma(
@@ -128,20 +205,22 @@ async def rewrite_prompt(
     )
     latency_ms = int((time.monotonic() - start) * 1000)
 
-    enriched = raw_output.strip()
-    if not enriched:
-        logger.warning(
-            "Stage 1 returned empty output; substituting original prompt. model_id=%s",
-            settings.prompt_rewrite_model_id,
-        )
-        enriched = original_prompt
+    positive_prompt, negative_prompt, elements = _parse_gemma_json(raw_output, original_prompt)
 
-    # Enforce prompt length ceiling
-    if len(enriched) > settings.sd_prompt_max_tokens:
-        enriched = enriched[: settings.sd_prompt_max_tokens]
+    if len(positive_prompt) > settings.sd_prompt_max_tokens:
+        positive_prompt = positive_prompt[: settings.sd_prompt_max_tokens]
+
+    logger.info(
+        "Stage 1 parsed. elements=%d positive_len=%d negative_len=%d",
+        len(elements),
+        len(positive_prompt),
+        len(negative_prompt),
+    )
 
     return RewriteResult(
-        enriched_prompt=enriched,
+        positive_prompt=positive_prompt,
+        negative_prompt=negative_prompt,
+        elements=elements,
         model_id=settings.prompt_rewrite_model_id,
         latency_ms=latency_ms,
     )

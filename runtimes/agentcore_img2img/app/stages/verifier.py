@@ -13,18 +13,23 @@ from .rewriter import _build_bedrock_client, _invoke_gemma  # works in ZIP (stag
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_INSTRUCTION = (
-    "You are an expert image quality evaluator. "
-    "You will be shown two images (a reference image and a generated candidate image) "
-    "and the original prompt that was used to guide the generation. "
-    "Evaluate the candidate image on two axes:\n"
-    "  1. prompt_alignment: how well the candidate matches the text prompt (1=no match, 10=perfect)\n"
-    "  2. structural_fidelity: how well the candidate preserves the spatial composition and "
-    "structural elements of the reference image (1=completely different, 10=identical structure)\n"
-    "Respond ONLY with valid JSON — no preamble, no explanation, no markdown fences.\n"
-    'Required schema: {"prompt_alignment": <integer 1-10>, '
-    '"structural_fidelity": <integer 1-10>, "description": "<one sentence>"}'
-)
+_SYSTEM_INSTRUCTION = """\
+You are an expert interior design quality evaluator.
+
+You will be shown a generated image of a redesigned room, together with the \
+design intent that guided its generation.
+
+Evaluate how well the generated image realises the design intent on a scale of \
+1 to 10 (1 = completely misses the intent, 10 = perfectly realises it).
+
+Also write one concise sentence identifying the most significant gap between \
+the design intent and what is actually visible in the image. This sentence \
+will be used to improve the next generation attempt — be specific about what \
+is wrong or missing.
+
+Respond ONLY with valid JSON — no markdown fences, no explanation.
+Required schema: {"prompt_alignment": <integer 1-10>, "description": "<one sentence describing the main gap>"}
+"""
 
 
 @dataclass
@@ -63,8 +68,8 @@ def _composite(pa: int, sf: int) -> float:
     return (_normalise(pa) + _normalise(sf)) / 2.0
 
 
-def _parse_scores(text: str) -> tuple[int, int, str] | None:
-    """Try to extract (prompt_alignment, structural_fidelity, description) from model output.
+def _parse_scores(text: str) -> tuple[int, str] | None:
+    """Try to extract (prompt_alignment, description) from model output.
 
     Attempts three strategies in order:
     1. Direct JSON parse of the full text.
@@ -75,9 +80,8 @@ def _parse_scores(text: str) -> tuple[int, int, str] | None:
     try:
         data = json.loads(text)
         pa = int(data["prompt_alignment"])
-        sf = int(data["structural_fidelity"])
         desc = str(data.get("description", ""))
-        return pa, sf, desc
+        return pa, desc
     except Exception:
         pass
 
@@ -87,9 +91,8 @@ def _parse_scores(text: str) -> tuple[int, int, str] | None:
         try:
             data = json.loads(match.group())
             pa = int(data["prompt_alignment"])
-            sf = int(data["structural_fidelity"])
             desc = str(data.get("description", ""))
-            return pa, sf, desc
+            return pa, desc
         except Exception:
             pass
 
@@ -97,20 +100,21 @@ def _parse_scores(text: str) -> tuple[int, int, str] | None:
 
 
 async def verify_image(
-    original_prompt: str,
-    reference_image_b64: str,
+    positive_prompt: str,
     candidate_image_b64: str,
     settings,  # PipelineSettings — avoid circular import by using duck typing
-    correction_context_max_tokens: int | None = None,
+    elements: list[str] | None = None,
 ) -> VerificationResult:
-    """Invoke Stage 3: dual-axis verification of a candidate generated image.
+    """Invoke Stage V: single-axis verification of the candidate generated image.
+
+    Scores prompt_alignment only (structural fidelity is enforced by ControlNet).
+    The ``description`` field contains a correction hint for the next Stage 1 call.
 
     Args:
-        original_prompt: The user's original text prompt.
-        reference_image_b64: Base64-encoded reference (input) image.
+        positive_prompt: The positive prompt used to generate the candidate.
         candidate_image_b64: Base64-encoded candidate (generated) image.
         settings: Pipeline configuration (PipelineSettings instance).
-        correction_context_max_tokens: Unused; kept for API symmetry.
+        elements: Optional surgical element list from Stage 1 (used as richer context).
 
     Returns:
         VerificationResult. On JSON parse failure, fail-open with composite_score=1.0
@@ -121,22 +125,19 @@ async def verify_image(
     """
     client = _build_bedrock_client(settings.aws_region)
 
+    if elements:
+        intent_text = "Intended changes:\n" + "\n".join(f"- {e}" for e in elements)
+    else:
+        intent_text = f"Design intent: {positive_prompt}"
+
     user_content: list[dict] = [
-        {
-            "type": "image_url",
-            "image_url": {"url": f"data:image/jpeg;base64,{reference_image_b64}"},
-        },
         {
             "type": "image_url",
             "image_url": {"url": f"data:image/jpeg;base64,{candidate_image_b64}"},
         },
         {
             "type": "text",
-            "text": (
-                f"Original prompt: {original_prompt}\n\n"
-                "The first image is the reference. The second image is the generated candidate. "
-                "Evaluate and return scores as specified."
-            ),
+            "text": f"{intent_text}\n\nEvaluate this generated image against the design intent.",
         },
     ]
 
@@ -147,7 +148,7 @@ async def verify_image(
         model_id=settings.prompt_rewrite_model_id,
         system_text=_SYSTEM_INSTRUCTION,
         user_message_content=user_content,
-        max_tokens=256,
+        max_tokens=128,
     )
     latency_ms = int((time.monotonic() - start) * 1000)
 
@@ -169,18 +170,12 @@ async def verify_image(
             parse_failed=True,
         )
 
-    pa, sf, description = parsed
-
-    # Handle case where one sub-score is missing/zero by substituting the other
-    if pa <= 0 and sf > 0:
-        pa = sf
-    elif sf <= 0 and pa > 0:
-        sf = pa
+    pa, description = parsed
 
     return VerificationResult(
         prompt_alignment=pa,
-        structural_fidelity=sf,
-        composite_score=_composite(pa, sf),
+        structural_fidelity=pa,  # single-axis: structural fidelity enforced by ControlNet
+        composite_score=_normalise(pa),
         description=description,
         model_id=settings.prompt_rewrite_model_id,
         latency_ms=latency_ms,

@@ -76,6 +76,15 @@ _DEFAULT_NEGATIVE_PROMPT = (
     "overexposed, underexposed"
 )
 
+# These terms are always appended to the negative prompt regardless of style.
+# They enforce structural immutability — SD must never render new openings or
+# alter the building envelope even if the positive prompt implies it.
+_STRUCTURAL_NEGATIVE_TERMS = (
+    "new window, added window, extra window, new door, added door, extra door, "
+    "new skylight, added skylight, new opening, new wall, removed wall, "
+    "relocated window, relocated door, new archway, new columns, new balcony"
+)
+
 
 def _invoke_sd(
     *,
@@ -144,6 +153,8 @@ async def generate_image(
     resized_bytes, _ = _resize_image(control_image_bytes, control_image_format)
     control_b64 = base64.b64encode(resized_bytes).decode("utf-8")
 
+    # Always append structural guard terms so SD never renders new openings
+    full_negative = f"{negative_prompt}, {_STRUCTURAL_NEGATIVE_TERMS}"
     start = time.monotonic()
     raw_result: dict = await asyncio.to_thread(
         _invoke_sd,
@@ -152,7 +163,7 @@ async def generate_image(
         prompt=enriched_prompt,
         control_image_b64=control_b64,
         seed=seed,
-        negative_prompt=negative_prompt,
+        negative_prompt=full_negative,
     )
     latency_ms = int((time.monotonic() - start) * 1000)
 

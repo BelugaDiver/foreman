@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -156,3 +157,81 @@ async def test_bedrock_error_propagates(settings: PipelineSettings) -> None:
                 image_format="jpeg",
                 settings=settings,
             )
+
+
+async def test_json_output_populates_all_fields(settings: PipelineSettings) -> None:
+    """When Gemma returns valid JSON, all three fields are parsed correctly."""
+    json_response = json.dumps({
+        "positive_prompt": "A bright Scandi living room with oak floors",
+        "negative_prompt": "dark, cluttered, ornate, maximalist",
+        "elements": ["sofa → low-profile linen sectional", "rug → natural jute"],
+    })
+
+    with patch(
+        "runtimes.agentcore_img2img.app.stages.rewriter._invoke_gemma",
+        side_effect=_make_invoke_gemma_side_effect(json_response),
+    ), patch(
+        "runtimes.agentcore_img2img.app.stages.rewriter._build_bedrock_client",
+        return_value=MagicMock(),
+    ):
+        result = await rewrite_prompt(
+            original_prompt="scandi living room",
+            image_b64=_fake_image_b64(),
+            image_format="jpeg",
+            settings=settings,
+        )
+
+    assert result.positive_prompt == "A bright Scandi living room with oak floors"
+    assert result.negative_prompt == "dark, cluttered, ornate, maximalist"
+    assert result.elements == ["sofa → low-profile linen sectional", "rug → natural jute"]
+    # enriched_prompt is an alias for positive_prompt
+    assert result.enriched_prompt == result.positive_prompt
+
+
+async def test_markdown_fenced_json_is_stripped_and_parsed(settings: PipelineSettings) -> None:
+    """Gemma sometimes wraps the JSON in ```json fences; these should be stripped."""
+    fenced = "```json\n" + json.dumps({
+        "positive_prompt": "Industrial loft with exposed brick",
+        "negative_prompt": "pastel, floral",
+        "elements": ["shelves → black steel open shelving"],
+    }) + "\n```"
+
+    with patch(
+        "runtimes.agentcore_img2img.app.stages.rewriter._invoke_gemma",
+        side_effect=_make_invoke_gemma_side_effect(fenced),
+    ), patch(
+        "runtimes.agentcore_img2img.app.stages.rewriter._build_bedrock_client",
+        return_value=MagicMock(),
+    ):
+        result = await rewrite_prompt(
+            original_prompt="industrial loft",
+            image_b64=_fake_image_b64(),
+            image_format="jpeg",
+            settings=settings,
+        )
+
+    assert result.positive_prompt == "Industrial loft with exposed brick"
+    assert result.elements == ["shelves → black steel open shelving"]
+
+
+async def test_json_missing_fields_fall_back_gracefully(settings: PipelineSettings) -> None:
+    """Partial JSON (missing negative_prompt and elements) falls back to safe defaults."""
+    partial_json = json.dumps({"positive_prompt": "A cosy bedroom"})
+
+    with patch(
+        "runtimes.agentcore_img2img.app.stages.rewriter._invoke_gemma",
+        side_effect=_make_invoke_gemma_side_effect(partial_json),
+    ), patch(
+        "runtimes.agentcore_img2img.app.stages.rewriter._build_bedrock_client",
+        return_value=MagicMock(),
+    ):
+        result = await rewrite_prompt(
+            original_prompt="cosy bedroom",
+            image_b64=_fake_image_b64(),
+            image_format="jpeg",
+            settings=settings,
+        )
+
+    assert result.positive_prompt == "A cosy bedroom"
+    assert result.negative_prompt == ""
+    assert result.elements == []

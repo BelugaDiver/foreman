@@ -50,70 +50,63 @@ def _patch_client():
     )
 
 
-async def test_happy_path_both_scores_parsed_and_composite_correct(
+async def test_happy_path_score_parsed_and_composite_correct(
     settings: PipelineSettings,
 ) -> None:
-    response_json = '{"prompt_alignment": 8, "structural_fidelity": 6, "description": "Good match"}'
+    response_json = '{"prompt_alignment": 8, "description": "Good match"}'
 
     with _patch_nova(response_json), _patch_client():
         result = await verify_image(
-            original_prompt="a room",
-            reference_image_b64=_fake_b64(),
+            positive_prompt="a room",
             candidate_image_b64=_fake_b64(),
             settings=settings,
         )
 
     assert isinstance(result, VerificationResult)
     assert result.prompt_alignment == 8
-    assert result.structural_fidelity == 6
+    assert result.structural_fidelity == 8  # mirrors prompt_alignment
     assert result.parse_failed is False
     assert result.description == "Good match"
-    # normalise(8) = 7/9 ≈ 0.778, normalise(6) = 5/9 ≈ 0.556, composite = (0.778+0.556)/2 ≈ 0.667
-    expected = ((8 - 1) / 9.0 + (6 - 1) / 9.0) / 2.0
+    # composite_score = normalise(8) = (8 - 1) / 9
+    expected = (8 - 1) / 9.0
     assert abs(result.composite_score - expected) < 1e-6
 
 
 async def test_score_outside_range_clamped_before_normalisation(
     settings: PipelineSettings,
 ) -> None:
-    # Both scores > 0 but above the 10-point ceiling — should be clamped to 10 in normalisation
-    # normalise(15) = (clamp(15,1,10)-1)/9 = 9/9 = 1.0
-    # normalise(12) = (clamp(12,1,10)-1)/9 = 9/9 = 1.0
-    # composite = (1.0 + 1.0) / 2 = 1.0
-    response_json = '{"prompt_alignment": 15, "structural_fidelity": 12, "description": ""}'
+    # pa=15 > ceiling of 10 — clamped to 10 in normalisation
+    # normalise(15) = (clamp(15,1,10) - 1) / 9 = 9/9 = 1.0
+    response_json = '{"prompt_alignment": 15, "description": ""}'
 
     with _patch_nova(response_json), _patch_client():
         result = await verify_image(
-            original_prompt="a room",
-            reference_image_b64=_fake_b64(),
+            positive_prompt="a room",
             candidate_image_b64=_fake_b64(),
             settings=settings,
         )
 
     assert result.prompt_alignment == 15  # raw stored as-is
-    assert result.structural_fidelity == 12
+    assert result.structural_fidelity == 15  # mirrors prompt_alignment
     assert abs(result.composite_score - 1.0) < 1e-6
 
 
-async def test_one_sub_score_absent_substituted_with_present_score(
+async def test_elements_list_used_as_intent_context(
     settings: PipelineSettings,
 ) -> None:
-    # structural_fidelity = 0 → should be substituted with prompt_alignment
-    response_json = '{"prompt_alignment": 7, "structural_fidelity": 0, "description": "partial"}'
+    """Elements list is passed to user_content when provided."""
+    response_json = '{"prompt_alignment": 7, "description": "sofa colour mismatch"}'
 
     with _patch_nova(response_json), _patch_client():
         result = await verify_image(
-            original_prompt="a room",
-            reference_image_b64=_fake_b64(),
+            positive_prompt="modern living room",
             candidate_image_b64=_fake_b64(),
             settings=settings,
+            elements=["sofa → linen sectional", "lighting → recessed downlights"],
         )
 
-    # Both should equal 7 after substitution
-    assert result.structural_fidelity == 7
     assert result.prompt_alignment == 7
-    expected = ((7 - 1) / 9.0 + (7 - 1) / 9.0) / 2.0
-    assert abs(result.composite_score - expected) < 1e-6
+    assert result.description == "sofa colour mismatch"
 
 
 async def test_json_parse_failure_applies_fail_open(
@@ -123,8 +116,7 @@ async def test_json_parse_failure_applies_fail_open(
 
     with _patch_nova(malformed), _patch_client():
         result = await verify_image(
-            original_prompt="a room",
-            reference_image_b64=_fake_b64(),
+            positive_prompt="a room",
             candidate_image_b64=_fake_b64(),
             settings=settings,
         )
@@ -142,8 +134,7 @@ async def test_bedrock_error_propagates(settings: PipelineSettings) -> None:
     ), _patch_client():
         with pytest.raises(RuntimeError, match="Bedrock unavailable"):
             await verify_image(
-                original_prompt="a room",
-                reference_image_b64=_fake_b64(),
+                positive_prompt="a room",
                 candidate_image_b64=_fake_b64(),
                 settings=settings,
             )
