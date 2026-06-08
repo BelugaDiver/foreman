@@ -136,15 +136,3 @@ async def test_generate_output_image_bytes_absent_returns_none():
         result = await provider.generate(prompt="a room", generation_id="gen-xyz")
 
     assert result.output_image_bytes is None
-
-
-@pytest.mark.asyncio
-async def test_generate_invalid_base64_raises_on_decode():
-    """Corrupted output_image_bytes raises when decoded via _decode_image_bytes_to_temp_file."""
-    provider = AgentCoreProvider(
-        runtime_arn="arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/test",
-        region="us-east-1",
-    )
-
-    with pytest.raises(Exception):
-        await provider._decode_image_bytes_to_temp_file("!!!NOT_VALID_BASE64!!!")

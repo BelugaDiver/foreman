@@ -8,19 +8,25 @@ from dataclasses import dataclass
 
 import boto3
 
-from runtimes.agentcore_img2img.app.settings import PipelineSettings
+try:
+    from settings import PipelineSettings  # ZIP deployment
+except ImportError:
+    from runtimes.agentcore_img2img.app.settings import PipelineSettings  # dev/test
 
 logger = logging.getLogger(__name__)
 
 _SYSTEM_INSTRUCTION = (
-    "You are an expert image-generation prompt engineer. "
-    "Your task is to rewrite the user's prompt into a detailed, vivid description "
-    "suitable for a Stable Diffusion model. "
-    "Incorporate visual details you observe in the attached reference image. "
-    "Output ONLY the rewritten prompt — no preamble, no explanation, no markdown. "
-    "The rewritten prompt MUST be at least as long as the original prompt. "
-    "If the original prompt is already detailed, enrich it further. "
-    "If you cannot produce a meaningful rewrite, reproduce the original prompt verbatim."
+    "You are an expert interior design prompt engineer for Stable Diffusion. "
+    "The user will give you a short instruction and a photo of a room. "
+    "Your job is to produce a single detailed text prompt that will guide a Stable Diffusion ControlNet model "
+    "to redesign the room according to the instruction while preserving its structural layout. "
+    "Rules: "
+    "1. Describe the redesigned room as if it already exists — present tense, photorealistic. "
+    "2. Include: lighting conditions, materials (flooring, walls, fabrics), furniture style, colour palette, "
+    "   decorative objects, and atmosphere. "
+    "3. Do NOT describe what to remove — only describe what the finished room looks like. "
+    "4. Do NOT include the word 'realistic' or photographic meta-language like 'shot with'. "
+    "5. Output ONLY the prompt text — no preamble, no bullets, no explanation."
 )
 
 
@@ -43,7 +49,7 @@ def _build_bedrock_client(region: str) -> object:
     return boto3.client("bedrock-runtime", region_name=region)
 
 
-def _invoke_nova(
+def _invoke_gemma(
     *,
     client: object,
     model_id: str,
@@ -51,12 +57,14 @@ def _invoke_nova(
     user_message_content: list[dict],
     max_tokens: int = 512,
 ) -> str:
-    """Synchronous Bedrock invoke_model call using the Nova messages-v1 schema."""
+    """Synchronous Bedrock invoke_model call using the OpenAI Chat Completions format (Gemma)."""
     body = {
-        "schemaVersion": "messages-v1",
-        "system": [{"text": system_text}],
-        "messages": [{"role": "user", "content": user_message_content}],
-        "inferenceConfig": {"max_new_tokens": max_tokens, "temperature": 0.7},
+        "messages": [
+            {"role": "system", "content": system_text},
+            {"role": "user", "content": user_message_content},
+        ],
+        "max_tokens": max_tokens,
+        "temperature": 0.7,
     }
     resp = client.invoke_model(  # type: ignore[attr-defined]
         modelId=model_id,
@@ -65,7 +73,7 @@ def _invoke_nova(
         accept="application/json",
     )
     result = json.loads(resp["body"].read())
-    return result["output"]["message"]["content"][0]["text"].strip()
+    return result["choices"][0]["message"]["content"].strip()
 
 
 async def rewrite_prompt(
@@ -95,27 +103,24 @@ async def rewrite_prompt(
 
     user_content: list[dict] = [
         {
-            "image": {
-                "format": image_format,
-                "source": {"bytes": image_b64},
-            }
+            "type": "image_url",
+            "image_url": {"url": f"data:image/{image_format};base64,{image_b64}"},
         },
-        {"text": f"Original prompt: {original_prompt}"},
+        {"type": "text", "text": f"Original prompt: {original_prompt}"},
     ]
 
     if correction_context:
         trimmed = correction_context[: settings.correction_context_max_tokens]
         user_content.append(
             {
-                "text": (
-                    f"Previous attempt feedback (use this to improve the prompt): {trimmed}"
-                )
+                "type": "text",
+                "text": f"Previous attempt feedback (use this to improve the prompt): {trimmed}",
             }
         )
 
     start = time.monotonic()
     raw_output: str = await asyncio.to_thread(
-        _invoke_nova,
+        _invoke_gemma,
         client=client,
         model_id=settings.prompt_rewrite_model_id,
         system_text=_SYSTEM_INSTRUCTION,

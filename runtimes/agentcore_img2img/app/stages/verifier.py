@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 import boto3
 
-from runtimes.agentcore_img2img.app.stages.rewriter import _build_bedrock_client, _invoke_nova
+from .rewriter import _build_bedrock_client, _invoke_gemma  # works in ZIP (stages pkg) and dev
 
 logger = logging.getLogger(__name__)
 
@@ -123,29 +123,26 @@ async def verify_image(
 
     user_content: list[dict] = [
         {
-            "image": {
-                "format": "jpeg",
-                "source": {"bytes": reference_image_b64},
-            }
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{reference_image_b64}"},
         },
         {
-            "image": {
-                "format": "jpeg",
-                "source": {"bytes": candidate_image_b64},
-            }
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{candidate_image_b64}"},
         },
         {
+            "type": "text",
             "text": (
                 f"Original prompt: {original_prompt}\n\n"
                 "The first image is the reference. The second image is the generated candidate. "
                 "Evaluate and return scores as specified."
-            )
+            ),
         },
     ]
 
     start = time.monotonic()
     raw_output: str = await asyncio.to_thread(
-        _invoke_nova,
+        _invoke_gemma,
         client=client,
         model_id=settings.prompt_rewrite_model_id,
         system_text=_SYSTEM_INSTRUCTION,

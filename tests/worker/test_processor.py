@@ -103,6 +103,7 @@ async def test_run_agent_returns_dict_with_path():
     result_mock = MagicMock()
     result_mock.output_image_url = "file:///tmp/gen_abc.png"
     result_mock.model_used = "gemini-3.1-flash-image-preview"
+    result_mock.output_image_bytes = None
     ai.generate = AsyncMock(return_value=result_mock)
 
     processor = _make_processor(ai_provider=ai)

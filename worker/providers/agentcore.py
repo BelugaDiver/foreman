@@ -5,8 +5,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-import os
-import tempfile
 from dataclasses import dataclass
 from typing import Any
 
@@ -21,7 +19,7 @@ logger = get_logger("worker.providers.agentcore")
 class AgentCoreResult:
     """Normalized AgentCore response used by the worker processor."""
 
-    output_image_url: str
+    output_image_url: str | None
     model_used: str
     generated_image_description: str | None = None
     output_image_bytes: str | None = None
@@ -139,18 +137,46 @@ class AgentCoreProvider:
         if not isinstance(response, dict):
             raise ValueError("AgentCore response must be a dict")
 
+        # Log all response keys and metadata to help diagnose shape changes.
+        non_body_keys = {k: v for k, v in response.items() if k not in ("response", "payload")}
+        logger.debug(
+            "AgentCore raw response metadata",
+            extra={
+                "response_keys": list(response.keys()),
+                "content_type": response.get("contentType"),
+                "http_status": response.get("ResponseMetadata", {}).get("HTTPStatusCode"),
+                "metadata": non_body_keys,
+            },
+        )
+
         # The SDK returns the body as a streaming blob under the "response" key.
         # Fall back to "payload" for any future SDK shape changes.
-        raw_body = response.get("response") or response.get("payload")
+        # Try all known key names.
+        raw_body = response.get("response") or response.get("payload") or response.get("body")
         if raw_body is None:
-            raise ValueError("AgentCore response has no body (expected 'response' key)")
+            raise ValueError(
+                f"AgentCore response has no body. Keys present: {list(response.keys())}"
+            )
 
         if hasattr(raw_body, "read"):
             raw_body = raw_body.read()
         if isinstance(raw_body, (bytes, bytearray)):
             raw_body = raw_body.decode("utf-8")
 
+        logger.info(
+            "AgentCore raw response body",
+            extra={
+                "body_type": type(raw_body).__name__,
+                "body_length": len(raw_body) if isinstance(raw_body, (str, bytes)) else "n/a",
+                "body_preview": (raw_body[:300] if isinstance(raw_body, str) else str(raw_body)[:300]),
+            },
+        )
+
         if isinstance(raw_body, str):
+            if not raw_body.strip():
+                raise ValueError(
+                    f"AgentCore response body is empty (content_type={response.get('contentType')!r})"
+                )
             try:
                 payload = json.loads(raw_body)
             except json.JSONDecodeError as exc:
@@ -162,37 +188,14 @@ class AgentCoreProvider:
 
         artifact = payload.get("artifact", {})
         output_url = payload.get("output_image_url") or artifact.get("output_image_url")
+        output_bytes = payload.get("output_image_bytes")
 
-        if not output_url:
-            raise ValueError("AgentCore response missing output_image_url")
+        if not output_url and not output_bytes:
+            raise ValueError("AgentCore response missing both output_image_url and output_image_bytes")
 
         return {
             "output_image_url": output_url,
             "generated_image_description": payload.get("generated_image_description"),
             "model_used": payload.get("model_used", "agentcore"),
-            "output_image_bytes": payload.get("output_image_bytes"),
+            "output_image_bytes": output_bytes,
         }
-
-    async def _decode_image_bytes_to_temp_file(
-        self, output_image_bytes: str | None
-    ) -> str | None:
-        """Decode base64 output_image_bytes to a temp file; return path or None.
-
-        The returned path is used by the worker processor's upload branch.
-        File I/O is wrapped in asyncio.to_thread() to avoid blocking the loop.
-        """
-        if not output_image_bytes:
-            return None
-
-        def _write() -> str:
-            raw = base64.b64decode(output_image_bytes)
-            fd, path = tempfile.mkstemp(suffix=".jpg")
-            try:
-                with os.fdopen(fd, "wb") as f:
-                    f.write(raw)
-            except Exception:
-                os.unlink(path)
-                raise
-            return path
-
-        return await asyncio.to_thread(_write)

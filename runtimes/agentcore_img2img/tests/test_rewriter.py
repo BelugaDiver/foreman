@@ -11,7 +11,7 @@ from runtimes.agentcore_img2img.app.stages.rewriter import RewriteResult, rewrit
 
 def _make_settings(**overrides) -> PipelineSettings:
     defaults = dict(
-        prompt_rewrite_model_id="amazon.nova-lite-v1:0",
+        prompt_rewrite_model_id="google.gemma-3-12b-it",
         sd_model_id="us.stability.stable-image-control-structure-v1:0",
         controlnet_mode="depth",
         verification_alignment_threshold=0.75,
@@ -21,7 +21,6 @@ def _make_settings(**overrides) -> PipelineSettings:
         max_output_image_bytes=1048576,
         sd_prompt_max_tokens=500,
         correction_context_max_tokens=300,
-        output_base_url="https://cdn.example.com",
         aws_region="us-east-1",
     )
     defaults.update(overrides)
@@ -32,8 +31,8 @@ def _fake_image_b64() -> str:
     return base64.b64encode(b"\xff\xd8\xff\xe0fake_image_data").decode()
 
 
-def _make_invoke_nova_side_effect(text: str):
-    """Return a side-effect function that patches _invoke_nova to return ``text``."""
+def _make_invoke_gemma_side_effect(text: str):
+    """Return a side-effect function that patches _invoke_gemma to return ``text``."""
 
     def side_effect(**kwargs):
         return text
@@ -50,8 +49,8 @@ async def test_happy_path_returns_enriched_prompt(settings: PipelineSettings) ->
     enriched = "A bright modern living room with oak floors and a vaulted ceiling"
 
     with patch(
-        "runtimes.agentcore_img2img.app.stages.rewriter._invoke_nova",
-        side_effect=_make_invoke_nova_side_effect(enriched),
+        "runtimes.agentcore_img2img.app.stages.rewriter._invoke_gemma",
+        side_effect=_make_invoke_gemma_side_effect(enriched),
     ), patch(
         "runtimes.agentcore_img2img.app.stages.rewriter._build_bedrock_client",
         return_value=MagicMock(),
@@ -65,14 +64,14 @@ async def test_happy_path_returns_enriched_prompt(settings: PipelineSettings) ->
 
     assert isinstance(result, RewriteResult)
     assert result.enriched_prompt == enriched
-    assert result.model_id == "amazon.nova-lite-v1:0"
+    assert result.model_id == "google.gemma-3-12b-it"
     assert result.latency_ms >= 0
 
 
 async def test_empty_model_output_substitutes_original_prompt(settings: PipelineSettings) -> None:
     with patch(
-        "runtimes.agentcore_img2img.app.stages.rewriter._invoke_nova",
-        side_effect=_make_invoke_nova_side_effect("   "),
+        "runtimes.agentcore_img2img.app.stages.rewriter._invoke_gemma",
+        side_effect=_make_invoke_gemma_side_effect("   "),
     ), patch(
         "runtimes.agentcore_img2img.app.stages.rewriter._build_bedrock_client",
         return_value=MagicMock(),
@@ -91,8 +90,8 @@ async def test_prompt_truncated_to_sd_prompt_max_tokens(settings: PipelineSettin
     long_output = "A" * 1000  # exceeds default 500-char limit
 
     with patch(
-        "runtimes.agentcore_img2img.app.stages.rewriter._invoke_nova",
-        side_effect=_make_invoke_nova_side_effect(long_output),
+        "runtimes.agentcore_img2img.app.stages.rewriter._invoke_gemma",
+        side_effect=_make_invoke_gemma_side_effect(long_output),
     ), patch(
         "runtimes.agentcore_img2img.app.stages.rewriter._build_bedrock_client",
         return_value=MagicMock(),
@@ -118,7 +117,7 @@ async def test_correction_context_truncated_and_included(settings: PipelineSetti
     long_correction = "C" * 1000  # exceeds correction_context_max_tokens=300
 
     with patch(
-        "runtimes.agentcore_img2img.app.stages.rewriter._invoke_nova",
+        "runtimes.agentcore_img2img.app.stages.rewriter._invoke_gemma",
         side_effect=capture_invoke,
     ), patch(
         "runtimes.agentcore_img2img.app.stages.rewriter._build_bedrock_client",
@@ -144,7 +143,7 @@ async def test_correction_context_truncated_and_included(settings: PipelineSetti
 
 async def test_bedrock_error_propagates(settings: PipelineSettings) -> None:
     with patch(
-        "runtimes.agentcore_img2img.app.stages.rewriter._invoke_nova",
+        "runtimes.agentcore_img2img.app.stages.rewriter._invoke_gemma",
         side_effect=RuntimeError("Bedrock unavailable"),
     ), patch(
         "runtimes.agentcore_img2img.app.stages.rewriter._build_bedrock_client",

@@ -11,7 +11,10 @@ from dataclasses import dataclass
 import boto3
 from PIL import Image
 
-from runtimes.agentcore_img2img.app.settings import PipelineSettings
+try:
+    from settings import PipelineSettings  # ZIP deployment
+except ImportError:
+    from runtimes.agentcore_img2img.app.settings import PipelineSettings  # dev/test
 
 logger = logging.getLogger(__name__)
 
@@ -67,26 +70,32 @@ def _compress_to_fit(image_bytes: bytes, max_bytes: int) -> bytes:
     return b""
 
 
+_DEFAULT_NEGATIVE_PROMPT = (
+    "ugly, deformed, blurry, low quality, artifacts, watermark, text, signature, "
+    "cartoon, anime, painting, illustration, extra limbs, distorted perspective, "
+    "overexposed, underexposed"
+)
+
+
 def _invoke_sd(
     *,
     client: object,
     model_id: str,
     prompt: str,
     control_image_b64: str,
-    control_strength: float = 0.7,
-    negative_prompt: str = "",
+    control_strength: float = 0.65,
+    negative_prompt: str = _DEFAULT_NEGATIVE_PROMPT,
     seed: int = 0,
 ) -> dict:
     """Synchronous Bedrock invoke_model call to a Stability AI ControlNet model."""
     body = {
         "prompt": prompt,
+        "negative_prompt": negative_prompt,
         "image": control_image_b64,
         "control_strength": control_strength,
         "output_format": _SD_OUTPUT_FORMAT,
         "seed": seed,
     }
-    if negative_prompt:
-        body["negative_prompt"] = negative_prompt
 
     resp = client.invoke_model(  # type: ignore[attr-defined]
         modelId=model_id,
@@ -107,7 +116,7 @@ async def generate_image(
     control_image_format: str,
     settings: PipelineSettings,
     seed: int = 0,
-    negative_prompt: str = "",
+    negative_prompt: str = _DEFAULT_NEGATIVE_PROMPT,
 ) -> GenerationResult:
     """Invoke Stage 2: generate an image via SD ControlNet.
 

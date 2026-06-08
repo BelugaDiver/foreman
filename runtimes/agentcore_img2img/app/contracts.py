@@ -31,16 +31,9 @@ class RuntimeInvocationResponse(BaseModel):
     backward-compatible with older worker versions.
     """
 
-    output_image_url: HttpUrl
+    output_image_url: HttpUrl | None = None
     generated_image_description: str | None = None
     model_used: str | None = None
     output_image_bytes: str | None = None
 
     model_config = ConfigDict(extra="ignore")
-
-    @field_validator("output_image_url")
-    @classmethod
-    def validate_remote_url(cls, value: HttpUrl) -> HttpUrl:
-        if value.scheme not in {"http", "https"}:
-            raise ValueError("output_image_url must be a remote HTTP(S) URL")
-        return value

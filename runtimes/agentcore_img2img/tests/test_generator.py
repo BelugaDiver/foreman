@@ -24,7 +24,6 @@ def _make_settings(**overrides) -> PipelineSettings:
         max_output_image_bytes=1048576,
         sd_prompt_max_tokens=500,
         correction_context_max_tokens=300,
-        output_base_url="https://cdn.example.com",
         aws_region="us-east-1",
     )
     defaults.update(overrides)

@@ -236,3 +236,29 @@ class S3Storage(StorageProtocol):
                 span.record_exception(e)
                 logger.exception("Failed to upload file to S3", extra={"storage_key": storage_key})
                 raise
+
+    async def upload_bytes(self, data: bytes, storage_key: str) -> None:
+        """Upload raw bytes directly to S3 at the given storage key."""
+        import io
+
+        self._ensure_client()
+
+        with tracer.start_as_current_span("s3_upload_bytes") as span:
+            span.set_attribute("storage_key", storage_key)
+            span.set_attribute("bucket", self._bucket)
+
+            try:
+                await asyncio.to_thread(
+                    self._client.upload_fileobj,
+                    io.BytesIO(data),
+                    self._bucket,
+                    storage_key,
+                    ExtraArgs={"ContentType": "image/jpeg"},
+                )
+                span.set_attribute("outcome", "success")
+                logger.info("Uploaded bytes to S3", extra={"storage_key": storage_key})
+            except Exception as e:
+                span.set_attribute("outcome", "error")
+                span.record_exception(e)
+                logger.exception("Failed to upload bytes to S3", extra={"storage_key": storage_key})
+                raise

@@ -10,7 +10,6 @@ adds the script's directory to sys.path when running directly.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import sys
 
@@ -35,7 +34,7 @@ app = BedrockAgentCoreApp()
 
 
 @app.entrypoint
-def invoke(payload: dict) -> dict:
+async def invoke(payload: dict):
     """Process one image generation invocation."""
     try:
         req = RuntimeInvocationRequest.model_validate(payload)
@@ -48,15 +47,16 @@ def invoke(payload: dict) -> dict:
         except ValueError as exc:
             raise PermissionError(str(exc)) from exc
 
-    return asyncio.run(
-        run_graph(
-            generation_id=req.generation_id,
-            prompt=req.prompt,
-            input_image_url=str(req.input_image_url) if req.input_image_url else None,
-            style_id=req.style_id,
-        )
+    result = await run_graph(
+        generation_id=req.generation_id,
+        prompt=req.prompt,
+        input_image_url=str(req.input_image_url) if req.input_image_url else None,
+        style_id=req.style_id,
     )
+    return result
 
 
-if __name__ == "__main__":
-    app.run()
+# app.run() must be called at module level (not inside __main__ guard) so that
+# AgentCore can start the HTTP server whether main.py is imported or run as a script.
+app.run()
+

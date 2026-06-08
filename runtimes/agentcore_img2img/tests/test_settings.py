@@ -24,7 +24,6 @@ def test_defaults_without_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "MAX_OUTPUT_IMAGE_BYTES",
         "SD_PROMPT_MAX_TOKENS",
         "CORRECTION_CONTEXT_MAX_TOKENS",
-        "RUNTIME_OUTPUT_BASE_URL",
         "AWS_DEFAULT_REGION",
     ]:
         monkeypatch.delenv(var, raising=False)
@@ -41,7 +40,6 @@ def test_defaults_without_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.max_output_image_bytes == 1 * 1024 * 1024
     assert s.sd_prompt_max_tokens == 500
     assert s.correction_context_max_tokens == 300
-    assert s.output_base_url == ""
     assert s.aws_region == "us-east-1"
 
 
@@ -56,7 +54,6 @@ def test_overrides_applied(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MAX_OUTPUT_IMAGE_BYTES", "2097152")
     monkeypatch.setenv("SD_PROMPT_MAX_TOKENS", "800")
     monkeypatch.setenv("CORRECTION_CONTEXT_MAX_TOKENS", "400")
-    monkeypatch.setenv("RUNTIME_OUTPUT_BASE_URL", "https://cdn.example.com/outputs/")
     monkeypatch.setenv("AWS_DEFAULT_REGION", "eu-west-1")
 
     s = PipelineSettings.from_env()
@@ -72,8 +69,6 @@ def test_overrides_applied(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.max_output_image_bytes == 2097152
     assert s.sd_prompt_max_tokens == 800
     assert s.correction_context_max_tokens == 400
-    # Trailing slash stripped
-    assert s.output_base_url == "https://cdn.example.com/outputs"
     assert s.aws_region == "eu-west-1"
 
 
@@ -112,15 +107,3 @@ def test_unsupported_controlnet_mode_falls_back_to_depth_with_warning(
     assert s.controlnet_mode == "depth"
     assert s.sd_model_id == _DEFAULT_SD_MODEL_ID
     assert any("CONTROLNET_MODE" in msg for msg in caplog.messages)
-
-
-def test_missing_output_base_url_logs_warning(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    monkeypatch.delenv("RUNTIME_OUTPUT_BASE_URL", raising=False)
-
-    with caplog.at_level(logging.WARNING, logger="runtimes.agentcore_img2img.app.settings"):
-        s = PipelineSettings.from_env()
-
-    assert s.output_base_url == ""
-    assert any("RUNTIME_OUTPUT_BASE_URL" in msg for msg in caplog.messages)

@@ -6,7 +6,7 @@ import os
 logger = logging.getLogger(__name__)
 
 # Default model identifiers
-_DEFAULT_PROMPT_REWRITE_MODEL_ID = "amazon.nova-lite-v1:0"
+_DEFAULT_PROMPT_REWRITE_MODEL_ID = "google.gemma-3-12b-it"
 _DEFAULT_SD_MODEL_ID = "us.stability.stable-image-control-structure-v1:0"
 _SD_EDGE_MODEL_ID = "us.stability.stable-image-control-sketch-v1:0"
 
@@ -27,7 +27,6 @@ class PipelineSettings:
         max_output_image_bytes: Ceiling for base64-decoded output image size in bytes.
         sd_prompt_max_tokens: Character limit for the enriched prompt passed to SD.
         correction_context_max_tokens: Character limit for correction context fed back to Stage 1.
-        output_base_url: Base URL prefix used to construct ``output_image_url`` in the response.
         aws_region: AWS region for Bedrock client.
     """
 
@@ -44,7 +43,6 @@ class PipelineSettings:
         max_output_image_bytes: int,
         sd_prompt_max_tokens: int,
         correction_context_max_tokens: int,
-        output_base_url: str,
         aws_region: str,
     ) -> None:
         self.prompt_rewrite_model_id = prompt_rewrite_model_id
@@ -57,18 +55,11 @@ class PipelineSettings:
         self.max_output_image_bytes = max_output_image_bytes
         self.sd_prompt_max_tokens = sd_prompt_max_tokens
         self.correction_context_max_tokens = correction_context_max_tokens
-        self.output_base_url = output_base_url.rstrip("/")
         self.aws_region = aws_region
 
     @classmethod
     def from_env(cls) -> "PipelineSettings":
         """Construct settings from environment variables, logging warnings for missing values."""
-        output_base_url = os.getenv("RUNTIME_OUTPUT_BASE_URL", "").strip()
-        if not output_base_url:
-            logger.warning(
-                "RUNTIME_OUTPUT_BASE_URL is not set; output_image_url will be invalid"
-            )
-
         controlnet_mode = os.getenv("CONTROLNET_MODE", "depth").strip().lower()
         if controlnet_mode not in _SUPPORTED_CONTROLNET_MODES:
             logger.warning(
@@ -107,6 +98,5 @@ class PipelineSettings:
             correction_context_max_tokens=int(
                 os.getenv("CORRECTION_CONTEXT_MAX_TOKENS", "300")
             ),
-            output_base_url=output_base_url,
             aws_region=os.getenv("AWS_DEFAULT_REGION", "us-east-1").strip(),
         )

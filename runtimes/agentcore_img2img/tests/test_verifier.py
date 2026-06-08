@@ -21,7 +21,6 @@ def _make_settings(**overrides) -> PipelineSettings:
         max_output_image_bytes=1048576,
         sd_prompt_max_tokens=500,
         correction_context_max_tokens=300,
-        output_base_url="https://cdn.example.com",
         aws_region="us-east-1",
     )
     defaults.update(overrides)
@@ -39,7 +38,7 @@ def settings() -> PipelineSettings:
 
 def _patch_nova(text: str):
     return patch(
-        "runtimes.agentcore_img2img.app.stages.verifier._invoke_nova",
+        "runtimes.agentcore_img2img.app.stages.verifier._invoke_gemma",
         side_effect=lambda **kwargs: text,
     )
 
@@ -138,7 +137,7 @@ async def test_json_parse_failure_applies_fail_open(
 
 async def test_bedrock_error_propagates(settings: PipelineSettings) -> None:
     with patch(
-        "runtimes.agentcore_img2img.app.stages.verifier._invoke_nova",
+        "runtimes.agentcore_img2img.app.stages.verifier._invoke_gemma",
         side_effect=RuntimeError("Bedrock unavailable"),
     ), _patch_client():
         with pytest.raises(RuntimeError, match="Bedrock unavailable"):
