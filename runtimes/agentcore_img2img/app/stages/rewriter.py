@@ -31,7 +31,7 @@ exact shape:
     "<element in the image> → <what it becomes>",
     ...
   ],
-  "positive_prompt": "<60–200 word SD prompt describing the finished room>",
+  "positive_prompt": "<focused SD prompt — see rules below>",
   "negative_prompt": "<comma-separated list of things to avoid>"
 }
 
@@ -53,19 +53,25 @@ the photo. Do not invent light sources by adding architecture.
 "remove the wall"), include a structural note like \
 "room layout → open-plan with no dividing wall".
 
-Rules for "positive_prompt":
-- Write in present tense as if the redesigned room already exists.
-- Cover: lighting quality and colour temperature, flooring material and \
-finish, wall treatment, each piece of furniture (style, material, colour), \
-textiles and soft furnishings, decorative objects, and overall atmosphere.
-- Use precise interior design vocabulary — not generic words like "nice" \
-or "beautiful".
+Rules for "positive_prompt" — CRITICAL:
+- ONLY describe the elements that are changing. Do NOT describe elements \
+that are staying the same. The ControlNet structure model will preserve \
+everything unchanged directly from the photo — describing unchanged \
+elements forces the model to overwrite them.
+- Start with a brief style anchor (e.g. "Scandinavian hygge interior,") \
+then list each changing element with its new appearance.
+- Use precise interior design vocabulary for each changed element: \
+material, finish, colour, form factor (e.g. "low-profile linen sectional \
+in warm oat", "brushed brass arc floor lamp with linen shade").
+- Do NOT describe flooring, walls, ceiling, lighting quality, or atmosphere \
+unless those specific things are explicitly changing per the user's prompt.
 - Do NOT add, remove, or relocate any window or door opening. You may \
 describe changes to the style, frame, or glazing of windows and doors that \
 already exist in the photo if the user's intent calls for it.
 - Do NOT add skylights or any new opening not visible in the original photo.
 - Do NOT use the word "realistic" or photographic meta-language like \
 "shot with" or "DSLR".
+- Keep the prompt concise — 30 to 100 words is sufficient.
 
 Rules for "negative_prompt":
 - List artefacts, distortions, and stylistic clashes specific to the \

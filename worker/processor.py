@@ -64,7 +64,7 @@ class JobProcessor:
             span.set_attribute("project_id", job.project_id)
             span.set_attribute("prompt_length", len(job.prompt))
             span.set_attribute("retry_count", retry_count)
-            runtime_session_id = self._runtime_session_id_for_project(job.project_id)
+            runtime_session_id = job.generation_id
             span.set_attribute("runtime_session_id", runtime_session_id)
 
             user_id = None
@@ -216,13 +216,6 @@ class JobProcessor:
             "model_used": result.model_used,
             "generated_image_description": getattr(result, "generated_image_description", None),
         }
-
-    def _runtime_session_id_for_project(self, project_id: str) -> str:
-        """Derive a deterministic runtime session identifier from project_id."""
-        session_id = f"{self.config.runtime_session_prefix}-{project_id}"
-        if len(session_id) < 33:
-            session_id = f"{session_id}-session"
-        return session_id
 
     async def _refresh_input_url(self, input_image_url: str | None) -> str | None:
         """Return a fresh download URL for an S3 input image.

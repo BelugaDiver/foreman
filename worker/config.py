@@ -62,10 +62,6 @@ class WorkerConfig:
     worker_dead_letter_queue_url: str | None = field(
         default_factory=lambda: os.getenv("WORKER_DEAD_LETTER_QUEUE_URL")
     )
-    runtime_session_prefix: str = field(
-        default_factory=lambda: os.getenv("RUNTIME_SESSION_PREFIX", "proj")
-    )
-
     @classmethod
     def from_env(cls) -> "WorkerConfig":
         return cls()

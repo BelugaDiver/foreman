@@ -34,8 +34,8 @@ def test_defaults_without_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.sd_model_id == _DEFAULT_SD_MODEL_ID
     assert s.controlnet_mode == "depth"
     assert s.verification_alignment_threshold == 0.75
-    assert s.verification_max_iterations == 3
-    assert s.verification_time_budget_seconds == 120.0
+    assert s.verification_max_iterations == 2
+    assert s.verification_time_budget_seconds == 60.0
     assert s.verification_iter_estimate_seconds == 30.0
     assert s.max_output_image_bytes == 1 * 1024 * 1024
     assert s.sd_prompt_max_tokens == 500

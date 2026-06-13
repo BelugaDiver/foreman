@@ -92,7 +92,7 @@ def _invoke_sd(
     model_id: str,
     prompt: str,
     control_image_b64: str,
-    control_strength: float = 0.65,
+    control_strength: float = 0.85,
     negative_prompt: str = _DEFAULT_NEGATIVE_PROMPT,
     seed: int = 0,
 ) -> dict:

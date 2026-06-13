@@ -83,10 +83,10 @@ class PipelineSettings:
                 os.getenv("VERIFICATION_ALIGNMENT_THRESHOLD", "0.75")
             ),
             verification_max_iterations=int(
-                os.getenv("VERIFICATION_MAX_ITERATIONS", "3")
+                os.getenv("VERIFICATION_MAX_ITERATIONS", "2")
             ),
             verification_time_budget_seconds=float(
-                os.getenv("VERIFICATION_TIME_BUDGET_SECONDS", "120.0")
+                os.getenv("VERIFICATION_TIME_BUDGET_SECONDS", "60.0")
             ),
             verification_iter_estimate_seconds=float(
                 os.getenv("VERIFICATION_ITER_ESTIMATE_SECONDS", "30.0")

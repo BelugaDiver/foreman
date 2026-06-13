@@ -260,17 +260,6 @@ async def test_process_success():
     processor._storage.upload_file.assert_called_once()
 
 
-async def test_runtime_session_id_is_deterministic_and_long_enough():
-    """Session ID derivation is deterministic and >=33 chars."""
-    processor = _make_processor(config=_make_config(runtime_session_prefix="proj"))
-    project_id = "00000000-0000-0000-0000-000000000003"
-    sid1 = processor._runtime_session_id_for_project(project_id)
-    sid2 = processor._runtime_session_id_for_project(project_id)
-    assert sid1 == sid2
-    assert sid1.startswith("proj-")
-    assert len(sid1) >= 33
-
-
 async def test_process_terminal_redelivery_returns_idempotent_noop():
     """Terminal generation status should skip expensive processing and return no-op result."""
     processor = _make_processor()
