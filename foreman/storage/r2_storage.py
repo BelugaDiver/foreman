@@ -128,3 +128,17 @@ class R2Storage(StorageProtocol):
                 ExtraArgs={"ContentType": "image/png"},
             )
         logger.info("Uploaded file to R2", extra={"storage_key": storage_key})
+
+    async def upload_bytes(self, data: bytes, storage_key: str) -> None:
+        """Upload raw bytes directly to R2 at the given storage key."""
+        import io
+
+        self._ensure_client()
+        await asyncio.to_thread(
+            self._client.upload_fileobj,
+            io.BytesIO(data),
+            self._bucket,
+            storage_key,
+            ExtraArgs={"ContentType": "image/jpeg"},
+        )
+        logger.info("Uploaded bytes to R2", extra={"storage_key": storage_key})

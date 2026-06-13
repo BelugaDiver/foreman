@@ -45,3 +45,12 @@ class StorageProtocol(ABC):
             local_path: Absolute path of the local file to upload.
             storage_key: Destination key in the storage bucket.
         """
+
+    @abstractmethod
+    async def upload_bytes(self, data: bytes, storage_key: str) -> None:
+        """Upload raw bytes directly to storage at the given key.
+
+        Args:
+            data: Raw bytes to upload.
+            storage_key: Destination key in the storage bucket.
+        """

@@ -11,7 +11,6 @@ adds the script's directory to sys.path when running directly.
 from __future__ import annotations
 
 import logging
-import os
 import sys
 
 # Configure root logger to stdout before any module imports so all loggers
@@ -22,11 +21,6 @@ logging.basicConfig(
     format="%(levelname)s %(name)s %(message)s",
     stream=sys.stdout,
 )
-
-# Safe default so the runtime works even without explicit env config.
-# Use the direct regional model ID to avoid the Marketplace subscription
-# required by the cross-region inference profile prefix "global.".
-os.environ.setdefault("RUNTIME_STRANDS_MODEL_ID", "anthropic.claude-haiku-4-5-20251001-v1:0")
 
 from bedrock_agentcore import BedrockAgentCoreApp  # provided by amazon-bedrock-agentcore
 from contracts import RuntimeInvocationRequest  # siblings in app/ or ZIP root
@@ -40,7 +34,7 @@ app = BedrockAgentCoreApp()
 
 
 @app.entrypoint
-def invoke(payload: dict) -> dict:
+async def invoke(payload: dict):
     """Process one image generation invocation."""
     try:
         req = RuntimeInvocationRequest.model_validate(payload)
@@ -53,13 +47,16 @@ def invoke(payload: dict) -> dict:
         except ValueError as exc:
             raise PermissionError(str(exc)) from exc
 
-    return run_graph(
+    result = await run_graph(
         generation_id=req.generation_id,
         prompt=req.prompt,
         input_image_url=str(req.input_image_url) if req.input_image_url else None,
         style_id=req.style_id,
     )
+    return result
 
 
-if __name__ == "__main__":
-    app.run()
+# app.run() must be called at module level (not inside __main__ guard) so that
+# AgentCore can start the HTTP server whether main.py is imported or run as a script.
+app.run()
+

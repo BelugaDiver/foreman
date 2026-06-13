@@ -23,17 +23,17 @@ class RuntimeInvocationRequest(BaseModel):
 
 
 class RuntimeInvocationResponse(BaseModel):
-    """Metadata-only runtime response returned to existing worker callers."""
+    """Runtime response returned to worker callers.
 
-    output_image_url: HttpUrl
+    ``output_image_bytes`` carries a base64-encoded JPEG when image generation
+    succeeded. Workers decode the bytes and upload them to the storage backend.
+    Extra fields are silently ignored so that adding new response fields is
+    backward-compatible with older worker versions.
+    """
+
+    output_image_url: HttpUrl | None = None
     generated_image_description: str | None = None
     model_used: str | None = None
+    output_image_bytes: str | None = None
 
-    model_config = ConfigDict(extra="forbid")
-
-    @field_validator("output_image_url")
-    @classmethod
-    def validate_remote_url(cls, value: HttpUrl) -> HttpUrl:
-        if value.scheme not in {"http", "https"}:
-            raise ValueError("output_image_url must be a remote HTTP(S) URL")
-        return value
+    model_config = ConfigDict(extra="ignore")

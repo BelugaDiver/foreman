@@ -103,6 +103,7 @@ async def test_run_agent_returns_dict_with_path():
     result_mock = MagicMock()
     result_mock.output_image_url = "file:///tmp/gen_abc.png"
     result_mock.model_used = "gemini-3.1-flash-image-preview"
+    result_mock.output_image_bytes = None
     ai.generate = AsyncMock(return_value=result_mock)
 
     processor = _make_processor(ai_provider=ai)
@@ -257,17 +258,6 @@ async def test_process_success():
     assert result.generated_image_description == "clean layout"
     processor._run_agent.assert_called_once()
     processor._storage.upload_file.assert_called_once()
-
-
-async def test_runtime_session_id_is_deterministic_and_long_enough():
-    """Session ID derivation is deterministic and >=33 chars."""
-    processor = _make_processor(config=_make_config(runtime_session_prefix="proj"))
-    project_id = "00000000-0000-0000-0000-000000000003"
-    sid1 = processor._runtime_session_id_for_project(project_id)
-    sid2 = processor._runtime_session_id_for_project(project_id)
-    assert sid1 == sid2
-    assert sid1.startswith("proj-")
-    assert len(sid1) >= 33
 
 
 async def test_process_terminal_redelivery_returns_idempotent_noop():

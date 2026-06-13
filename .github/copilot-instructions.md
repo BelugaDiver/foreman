@@ -235,12 +235,13 @@ pip install -e ".[dev]"
 ```
 
 <!-- SPECKIT START -->
-**Current Feature**: AgentCore Runtime Configuration  
-**Plan**: [specs/003-agentcore-runtime-config/plan.md](specs/003-agentcore-runtime-config/plan.md)  
-**Spec**: [specs/003-agentcore-runtime-config/spec.md](specs/003-agentcore-runtime-config/spec.md)  
+**Current Feature**: Runtime Image Generation Pipeline  
+**Plan**: [specs/004-runtime-img-generation/plan.md](specs/004-runtime-img-generation/plan.md)  
+**Spec**: [specs/004-runtime-img-generation/spec.md](specs/004-runtime-img-generation/spec.md)  
 **Key Design Docs**:
-- [Research](specs/003-agentcore-runtime-config/research.md) — Runtime contract, queue contract, and rollout design decisions
-- [Data Model](specs/003-agentcore-runtime-config/data-model.md) — Runtime profile, execution session, policy, and recovery entities
-- [API Contracts](specs/003-agentcore-runtime-config/contracts/worker-agentcore-contract.md) — Queue and AgentCore request/response contracts
-- [Quickstart](specs/003-agentcore-runtime-config/quickstart.md) — Configuration and verification flow
+- [Research](specs/004-runtime-img-generation/research.md) — Bedrock SD ControlNet model IDs, Nova Lite multimodal format, verification JSON prompt pattern
+- [Data Model](specs/004-runtime-img-generation/data-model.md) — PipelineSettings, RewriteResult, GenerationResult, VerificationResult, LoopState, contract extensions
+- [Runtime Response Contract](specs/004-runtime-img-generation/contracts/runtime-response-contract.md) — RuntimeInvocationResponse extension with output_image_bytes
+- [Worker–AgentCore Contract](specs/004-runtime-img-generation/contracts/worker-agentcore-contract.md) — AgentCoreResult extension, processor.py unchanged path
+- [Quickstart](specs/004-runtime-img-generation/quickstart.md) — Configuration, per-stage verification, worker end-to-end
 <!-- SPECKIT END -->

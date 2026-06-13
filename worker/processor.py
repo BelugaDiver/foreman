@@ -5,7 +5,9 @@ from __future__ import annotations
 import os
 import time
 import uuid
+from base64 import b64decode
 from dataclasses import dataclass
+from urllib.parse import urlparse
 from uuid import UUID
 
 from opentelemetry import trace
@@ -62,7 +64,7 @@ class JobProcessor:
             span.set_attribute("project_id", job.project_id)
             span.set_attribute("prompt_length", len(job.prompt))
             span.set_attribute("retry_count", retry_count)
-            runtime_session_id = self._runtime_session_id_for_project(job.project_id)
+            runtime_session_id = job.generation_id
             span.set_attribute("runtime_session_id", runtime_session_id)
 
             user_id = None
@@ -180,13 +182,16 @@ class JobProcessor:
             extra={"prompt_length": len(job.prompt), "input_image": job.input_image_url},
         )
 
+        # Refresh presigned input URL to prevent 403s when the stored URL has expired.
+        input_image_url = await self._refresh_input_url(job.input_image_url)
+
         with tracer.start_as_current_span("invoke_ai_provider") as span:
             span.set_attribute("runtime_session_id", runtime_session_id)
             span.set_attribute("generation_id", job.generation_id)
             invoke_started = time.time()
             result = await self.ai_provider.generate(
                 prompt=job.prompt,
-                input_image_url=job.input_image_url if job.input_image_url else None,
+                input_image_url=input_image_url,
                 style_id=job.style_id,
                 enhance_prompt=True,
                 runtime_session_id=runtime_session_id,
@@ -198,8 +203,13 @@ class JobProcessor:
 
         output_url = result.output_image_url
         output_path = (
-            output_url.replace("file://", "") if output_url.startswith("file://") else None
+            output_url.replace("file://", "") if output_url and output_url.startswith("file://") else None
         )
+
+        if result.output_image_bytes:
+            output_url = await self._upload_bytes_to_storage(b64decode(result.output_image_bytes))
+            output_path = None
+
         return {
             "output_image_path": output_path,
             "output_image_url": output_url,
@@ -207,12 +217,44 @@ class JobProcessor:
             "generated_image_description": getattr(result, "generated_image_description", None),
         }
 
-    def _runtime_session_id_for_project(self, project_id: str) -> str:
-        """Derive a deterministic runtime session identifier from project_id."""
-        session_id = f"{self.config.runtime_session_prefix}-{project_id}"
-        if len(session_id) < 33:
-            session_id = f"{session_id}-session"
-        return session_id
+    async def _refresh_input_url(self, input_image_url: str | None) -> str | None:
+        """Return a fresh download URL for an S3 input image.
+
+        Stored input_image_url values are presigned URLs that expire after 1 hour.
+        This extracts the object key and regenerates a fresh URL via the storage
+        layer so the runtime never receives an expired URL.
+        """
+        if not input_image_url:
+            return None
+        try:
+            parsed = urlparse(input_image_url)
+            # S3 path-style: /<bucket>/<key> or virtual-hosted: <bucket>.s3…/<key>
+            storage_key = parsed.path.lstrip("/")
+            # Virtual-hosted URLs include the bucket in the hostname; path is just the key.
+            # Path-style URLs include the bucket as the first path segment — strip it.
+            if not parsed.hostname or ".s3." not in parsed.hostname:
+                # Possibly path-style: first segment is the bucket name
+                parts = storage_key.split("/", 1)
+                if len(parts) == 2:
+                    storage_key = parts[1]
+            return await self._storage.get_download_url(storage_key)
+        except Exception:
+            logger.warning(
+                "Could not refresh input image URL, using original",
+                extra={"input_image_url": input_image_url},
+            )
+            return input_image_url
+
+    async def _upload_bytes_to_storage(self, data: bytes) -> str:
+        """Upload raw image bytes via StorageProtocol and return the download URL."""
+        with tracer.start_as_current_span("upload_bytes_to_storage") as span:
+            storage_key = f"generations/{uuid.uuid4()}.jpg"
+            span.set_attribute("storage_key", storage_key)
+            await self._storage.upload_bytes(data, storage_key)
+            url = await self._storage.get_download_url(storage_key)
+            span.set_attribute("output_url", url)
+            logger.info("Uploaded bytes to storage", extra={"storage_key": storage_key})
+            return url
 
     async def _upload_to_storage(self, local_path: str) -> str:
         """Upload generated image via StorageProtocol and return the download URL."""
